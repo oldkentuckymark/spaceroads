@@ -339,22 +339,25 @@ namespace Mesh
     {
         return
         {
-        std::vector<Mesh::Piece>{},
-        {Mesh::Piece::TOPLOW},
-        {Mesh::Piece::TOPMID},
-        {Mesh::Piece::TOPHIGH},
-        {Mesh::Piece::LEFTLOW,Mesh::Piece::RIGHTLOW,Mesh::Piece::FRONTLOW,Mesh::Piece::TOPLOW},
-        {Mesh::Piece::LEFTMID,Mesh::Piece::RIGHTMID,Mesh::Piece::FRONTMID,Mesh::Piece::TOPMID},
-        {Mesh::Piece::LEFTHIGH,Mesh::Piece::RIGHTHIGH,Mesh::Piece::FRONTHIGH,Mesh::Piece::TOPHIGH},
-        {Mesh::Piece::TUNNELLOW},
-        {Mesh::Piece::TUNNELMID},
-        {Mesh::Piece::TUNNELHIGH},
-        {Mesh::Piece::TOPLOW,Mesh::Piece::TUNNELLOW},
-        {Mesh::Piece::TOPMID,Mesh::Piece::TUNNELMID},
-        {Mesh::Piece::TOPHIGH,Mesh::Piece::TUNNELHIGH},
-        {Mesh::Piece::LEFTLOW,Mesh::Piece::RIGHTLOW,Mesh::Piece::FRONTLOW,Mesh::Piece::TOPLOW,Mesh::Piece::TUNNELLOW},
-        {Mesh::Piece::LEFTMID,Mesh::Piece::RIGHTMID,Mesh::Piece::FRONTMID,Mesh::Piece::TOPMID,Mesh::Piece::TUNNELMID},
-        {Mesh::Piece::LEFTHIGH,Mesh::Piece::RIGHTHIGH,Mesh::Piece::FRONTHIGH,Mesh::Piece::TOPHIGH,Mesh::Piece::TUNNELHIGH}
+        std::vector<Mesh::Piece>{}, //Empty
+
+        {Mesh::Piece::TOPLOW},  //PlaneLow
+        {Mesh::Piece::LEFTLOW,Mesh::Piece::RIGHTLOW,Mesh::Piece::FRONTLOW,Mesh::Piece::TOPLOW}, //BlockLow
+        {Mesh::Piece::TUNNELLOW},   //TunnelLow
+        {Mesh::Piece::TOPLOW,Mesh::Piece::TUNNELLOW},   //TunnelPlaneLow
+        {Mesh::Piece::LEFTLOW,Mesh::Piece::RIGHTLOW,Mesh::Piece::FRONTLOW,Mesh::Piece::TOPLOW,Mesh::Piece::TUNNELLOW},  //TunnelBlockLow
+
+        {Mesh::Piece::TOPMID},  //PlaneMid
+        {Mesh::Piece::LEFTMID,Mesh::Piece::RIGHTMID,Mesh::Piece::FRONTMID,Mesh::Piece::TOPMID}, //BlockMid
+        {Mesh::Piece::TUNNELMID},   //TunelMid
+        {Mesh::Piece::TOPMID,Mesh::Piece::TUNNELMID},   //TuneelPlaneMid
+        {Mesh::Piece::LEFTMID,Mesh::Piece::RIGHTMID,Mesh::Piece::FRONTMID,Mesh::Piece::TOPMID,Mesh::Piece::TUNNELMID},  //TunnelBlockMid
+
+        {Mesh::Piece::TOPHIGH}, //PlaneHigh
+        {Mesh::Piece::LEFTHIGH,Mesh::Piece::RIGHTHIGH,Mesh::Piece::FRONTHIGH,Mesh::Piece::TOPHIGH}, //BlockHigh
+        {Mesh::Piece::TUNNELHIGH},  //TunnelHigh
+        {Mesh::Piece::TOPHIGH,Mesh::Piece::TUNNELHIGH}, //TunnelPlaneHigh
+        {Mesh::Piece::LEFTHIGH,Mesh::Piece::RIGHTHIGH,Mesh::Piece::FRONTHIGH,Mesh::Piece::TOPHIGH,Mesh::Piece::TUNNELHIGH}  //TunnelBlockHigh
         };
     }
 

@@ -491,13 +491,18 @@ public:
             {
                 c = '0';
             }
-            if(c >= '0' && c <= 'o')
+            else if(c >= '0' && c <= '9')
             {
                 c = c - '0';
             }
+            else if(c >= 'A' && c <= 'F')
+            {
+                c = (c - 'A') + 10;
+            }
             else
             {
-                //throw "ERROR: Invalid data in level file!";
+                //c = 15;
+                throw "ERROR: Invalid data in level file!";
             }
 
             return c;
@@ -557,20 +562,23 @@ public:
 
     std::array<Color const*,LEVEL_WIDTH * length_> cellColorBufferPtrs{nullptr};
     std::array<std::array<Color,Mesh::CELL_MESHES[0].size()>,parseCsvLevel(SL).seenColors[0].size()> EmptyBuffers{};
+
     std::array<std::array<Color,Mesh::CELL_MESHES[1].size()>,parseCsvLevel(SL).seenColors[1].size()> PlaneLowBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[2].size()>,parseCsvLevel(SL).seenColors[2].size()> PlaneMidBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[3].size()>,parseCsvLevel(SL).seenColors[3].size()> PlaneHighBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[4].size()>,parseCsvLevel(SL).seenColors[4].size()> BlockLowBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[5].size()>,parseCsvLevel(SL).seenColors[5].size()> BlockMidBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[6].size()>,parseCsvLevel(SL).seenColors[6].size()> BlockHighBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[7].size()>,parseCsvLevel(SL).seenColors[7].size()> TunnelLowBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[2].size()>,parseCsvLevel(SL).seenColors[2].size()> BlockLowBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[3].size()>,parseCsvLevel(SL).seenColors[3].size()> TunnelLowBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[4].size()>,parseCsvLevel(SL).seenColors[4].size()> TunnelPlaneLowBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[5].size()>,parseCsvLevel(SL).seenColors[5].size()> TunnelBlockLowBuffers{};
+
+    std::array<std::array<Color,Mesh::CELL_MESHES[6].size()>,parseCsvLevel(SL).seenColors[6].size()> PlaneMidBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[7].size()>,parseCsvLevel(SL).seenColors[7].size()> BlockMidBuffers{};
     std::array<std::array<Color,Mesh::CELL_MESHES[8].size()>,parseCsvLevel(SL).seenColors[8].size()> TunnelMidBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[9].size()>,parseCsvLevel(SL).seenColors[9].size()> TunnelHighBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[10].size()>,parseCsvLevel(SL).seenColors[10].size()> TunnelPlaneLowBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[11].size()>,parseCsvLevel(SL).seenColors[11].size()> TunnelPlaneMidBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[12].size()>,parseCsvLevel(SL).seenColors[12].size()> TunnelPlaneHighBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[13].size()>,parseCsvLevel(SL).seenColors[13].size()> TunnelBlockLowBuffers{};
-    std::array<std::array<Color,Mesh::CELL_MESHES[14].size()>,parseCsvLevel(SL).seenColors[14].size()> TunnelBlockMidBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[9].size()>,parseCsvLevel(SL).seenColors[9].size()> TunnelPlaneMidBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[10].size()>,parseCsvLevel(SL).seenColors[10].size()> TunnelBlockMidBuffers{};
+
+    std::array<std::array<Color,Mesh::CELL_MESHES[11].size()>,parseCsvLevel(SL).seenColors[11].size()> PlaneHighBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[12].size()>,parseCsvLevel(SL).seenColors[12].size()> BlockHighBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[13].size()>,parseCsvLevel(SL).seenColors[13].size()> TunnelHighBuffers{};
+    std::array<std::array<Color,Mesh::CELL_MESHES[14].size()>,parseCsvLevel(SL).seenColors[14].size()> TunnelPlaneHighBuffers{};
     std::array<std::array<Color,Mesh::CELL_MESHES[15].size()>,parseCsvLevel(SL).seenColors[15].size()> TunnelBlockHighBuffers{};
 
 

@@ -9,7 +9,7 @@ class Game
 public:
     Game()
     {
-
+        player_.position.x = 3.5_fx;
     }
 
     ~Game()
@@ -29,7 +29,7 @@ public:
         return player_;
     }
 
-    auto processInputs(std::array<bool, 10>& inputs) -> void
+    auto processInputs(std::array<bool, 10> const & inputs) -> void
     {
         constexpr size_t A = 0;
         constexpr size_t B = 1;
@@ -62,6 +62,13 @@ public:
 
     }
 
+    auto checkCollision() -> void
+    {
+
+
+
+
+    }
 
     auto update() -> void
     {

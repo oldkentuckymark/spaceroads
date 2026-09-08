@@ -19,7 +19,6 @@ public:
     {
         //ctx.setViewPort(160,128);
         //ctx.setNearZ(0.6_fx);
-        ctx.getVertexFunction().camPos = {0.5_fx,2_fx,-2.0_fx};
 
     }
 
@@ -54,8 +53,8 @@ public:
         ctx.setFaceCulling(ffr::FaceCullMode::Back);
         ctx.clear();
         auto& campos = ctx.getVertexFunction().camPos;
-        campos = current_player_->position + ffm::vec3{0.0_fx,2.0_fx,-2.0_fx};
-        campos.x = 0.5_fx;
+        campos = current_player_->position + ffm::vec3{0.0_fx,2.0_fx,-2.1_fx};
+        campos.x = 3.5_fx;
 
         int16_t const pz = static_cast<int16_t>(current_player_->position.z) / 2;
 
@@ -70,7 +69,7 @@ public:
                 auto const & cell {current_level_->getCell(x,z)};
                 if( cell.collision != Cell::Collision::Empty )
                 {
-                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x-3)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
+                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
                     auto const colptr{current_level_->getCellColorBufferPtr(x,z)};
                     ctx.setColorPointer(0, colptr);
                     ctx.setVertexPointer(3,sizeof(Vertex), Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].data());
@@ -119,7 +118,7 @@ public:
                 auto const & cell {current_level_->getCell(x,z)};
                 if( cell.collision != Cell::Collision::Empty )
                 {
-                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x-3)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
+                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
                     auto const colptr{current_level_->getCellColorBufferPtr(x,z)};
                     ctx.setColorPointer(0, colptr);
                     ctx.setVertexPointer(3,sizeof(Vertex), Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].data());

@@ -10,21 +10,24 @@ public:
 
     enum class Collision : uint8_t
     {
-        Empty,
+        Empty = 0,
+
         PlaneLow,
-        PlaneMid,
-        PlaneHigh,
         BlockLow,
-        BlockMid,
-        BlockHigh,
         TunnelLow,
-        TunnelMid,
-        TunnelHigh,
         TunnelPlaneLow,
-        TunnelPlaneMid,
-        TunnelPlaneHigh,
         TunnelBlockLow,
+
+        PlaneMid,
+        BlockMid,
+        TunnelMid,
+        TunnelPlaneMid,
         TunnelBlockMid,
+
+        PlaneHigh,
+        BlockHigh,
+        TunnelHigh,
+        TunnelPlaneHigh,
         TunnelBlockHigh,
 
         NUM_COLLISIONS
@@ -44,12 +47,15 @@ public:
 
     constexpr static auto isTunnel(Collision c) -> bool
     {
-        return (static_cast<std::size_t>(c) >= 7) && (static_cast<std::size_t>(c) <= 15);
+        return (c == Collision::TunnelLow || c == Collision::TunnelMid || c == Collision::TunnelHigh ||
+                c == Collision::TunnelPlaneLow || c == Collision::TunnelPlaneMid || c == Collision::TunnelPlaneHigh ||
+                c == Collision::TunnelBlockLow || c == Collision::TunnelBlockMid || c == Collision::TunnelBlockHigh);
     }
 
     constexpr static auto isTunnelFloor(Collision c) -> bool
     {
-        return (static_cast<std::size_t>(c) >= 10) && (static_cast<std::size_t>(c) <= 15);
+        return (c == Collision::TunnelPlaneLow || c == Collision::TunnelPlaneMid || c == Collision::TunnelPlaneHigh ||
+                c == Collision::TunnelBlockLow || c == Collision::TunnelBlockMid || c == Collision::TunnelBlockHigh);
     }
 
     constexpr Cell() = default;
