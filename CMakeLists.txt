@@ -45,6 +45,7 @@ set(SPACEROADS_GBA_SOURCES
 add_executable(spaceroads-sdl
     ${SPACEROADS_SDL_SOURCES}
     ${SPACEROADS_HEADERS}
+    source/raycast.hpp
 )
 
 

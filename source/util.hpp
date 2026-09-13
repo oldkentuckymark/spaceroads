@@ -1,6 +1,7 @@
 #ifndef UTIL_HPP
 #define UTIL_HPP
 
+#include <type_traits>
 #include <cstdint>
 #include <array>
 #include <vector>
@@ -157,9 +158,33 @@ constexpr auto swap(auto& a, decltype(a)& b) -> void
     b = t;
 }
 
-constexpr auto sort(auto& a, decltype(a)& b) -> void
+constexpr auto order(auto& a, decltype(a)& b) -> void
 {
     if(a > b) {swap(a,b);}
+}
+
+constexpr auto bubbleSort(auto& container) -> void
+{
+    auto t = std::remove_cvref_t<decltype(container[0])>{};
+}
+
+template <class RandomIt, class Compare>
+constexpr auto sort(RandomIt begin, RandomIt end, Compare comp) -> void
+{
+    if (begin == end) { return; }
+
+    for (RandomIt i = begin + 1; i != end; ++i)
+    {
+        auto key = *i;
+        RandomIt j = i;
+
+        while (j > begin && comp(key, *(j - 1)))
+        {
+            *j = *(j - 1);
+            --j;
+        }
+        *j = key;
+    }
 }
 
 template<size_t N>

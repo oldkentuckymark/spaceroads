@@ -27,6 +27,8 @@ public:
 
     [[nodiscard]] constexpr virtual auto getCellColorBufferPtr(uint16_t w, uint16_t l) const -> Color const*;
 
+    [[nodiscard]] constexpr auto getWidth() const -> int16_t { return LEVEL_WIDTH; }
+
     [[nodiscard]] constexpr virtual auto getLength() const -> int16_t;
 
     [[nodiscard]] constexpr virtual auto getOxygen() const -> int16_t;

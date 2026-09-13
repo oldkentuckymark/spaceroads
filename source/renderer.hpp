@@ -17,8 +17,7 @@ class Renderer
 public:
     Renderer()
     {
-        //ctx.setViewPort(160,128);
-        //ctx.setNearZ(0.6_fx);
+
 
     }
 
@@ -54,103 +53,41 @@ public:
         ctx.clear();
         auto& campos = ctx.getVertexFunction().camPos;
         campos = current_player_->position + ffm::vec3{0.0_fx,2.0_fx,-2.1_fx};
-        campos.x = 3.5_fx;
+        //campos.x = 3.5_fx;
 
         int16_t const pz = static_cast<int16_t>(current_player_->position.z) / 2;
+        int16_t maxz = pz + draw_distance_;
+        if(maxz >= current_level_->getLength()) { maxz = current_level_->getLength() - 1; }
+        int16_t minz = pz;
+        if(minz < 0) { minz = 0; }
+        int16_t px = current_player_->position.x;
+        if (px < 0) { px = 0; }
+        if (px > 8) { px = 8; }
 
-        for(int16_t z = pz + draw_distance_; z >= pz; --z)
+        //draw level back to front, each row outside in, low pieces to high
+        for(int16_t z = maxz; z >= minz; --z)
         {
-            if(z < 0) {break;}
-            if(z >= current_level_->getLength()) {continue;}
 
+            auto cxs = std::array<size_t, 7>{0,6,1,5,2,4,3};
 
-            for(int16_t x = 0; x < ILevel::LEVEL_WIDTH; ++x)
+            for(auto i = 0ul; i < 7; ++i)
             {
-                auto const & cell {current_level_->getCell(x,z)};
-                if( cell.collision != Cell::Collision::Empty )
+                auto& cell = current_level_->getCell(cxs[i],z);
+                if(cell.collision != Cell::Collision::Empty)
                 {
-                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
-                    auto const colptr{current_level_->getCellColorBufferPtr(x,z)};
+                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(cxs[i])),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
+                    auto const colptr{current_level_->getCellColorBufferPtr(cxs[i],z)};
                     ctx.setColorPointer(0, colptr);
                     ctx.setVertexPointer(3,sizeof(Vertex), Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].data());
-                    if(Cell::isTunnel(cell.collision))
-                    {
-                        if(cell.collision == Cell::Collision::TunnelPlaneLow ||
-                            cell.collision == Cell::Collision::TunnelPlaneMid ||
-                            cell.collision == Cell::Collision::TunnelPlaneHigh)
-                        {
-                            ctx.drawArray(ffr::DrawType::Quads,0,4);
-                        }
-                        else if(cell.collision == Cell::Collision::TunnelBlockLow ||
-                                cell.collision == Cell::Collision::TunnelBlockMid ||
-                                cell.collision == Cell::Collision::TunnelBlockHigh)
-                        {
-                            ctx.drawArray(ffr::DrawType::Quads,0,16);
-                        }
-                    }
-                    else
-                    {
-
-                        ctx.drawArray(ffr::DrawType::Quads,0,Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision)].size());
-                    }
+                    ctx.drawArray(ffr::DrawType::Quads, 0, Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].size());
                 }
-
-
             }
-        }
 
-        if(true || current_player_->position.y < 1.0_fx)
-        {
-            ctx.getVertexFunction().modelPos = current_player_->position;
-            ctx.setColorPointer(sizeof(Vertex), &Mesh::SHIP_MESH.data()->color);
-            ctx.setVertexPointer(3,sizeof(Vertex),Mesh::SHIP_MESH.data());
-            ctx.drawArray(ffr::DrawType::Quads,0,Mesh::SHIP_MESH.size());
-        }
-
-        for(int16_t z = pz + draw_distance_; z >= pz; --z)
-        {
-            if(z < 0) {break;}
-            if(z >= current_level_->getLength()) {continue;}
-
-
-            for(int16_t x = 0; x < ILevel::LEVEL_WIDTH; ++x)
-            {
-                auto const & cell {current_level_->getCell(x,z)};
-                if( cell.collision != Cell::Collision::Empty )
-                {
-                    ctx.getVertexFunction().modelPos = {ffm::fixed32(static_cast<int16_t>(x)),0.0_fx,ffm::fixed32(static_cast<int16_t>(z*2))};
-                    auto const colptr{current_level_->getCellColorBufferPtr(x,z)};
-                    ctx.setColorPointer(0, colptr);
-                    ctx.setVertexPointer(3,sizeof(Vertex), Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].data());
-                    if(Cell::isTunnel(cell.collision))
-                    {
-                        if(Cell::isTunnel(cell.collision))
-                        {
-                            if(cell.collision == Cell::Collision::TunnelPlaneLow ||
-                                cell.collision == Cell::Collision::TunnelPlaneMid ||
-                                cell.collision == Cell::Collision::TunnelPlaneHigh)
-                            {
-                                ctx.drawArray(ffr::DrawType::Quads,4,Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision)].size() - 4);
-                            }
-                            else if(cell.collision == Cell::Collision::TunnelBlockLow ||
-                                     cell.collision == Cell::Collision::TunnelBlockMid ||
-                                     cell.collision == Cell::Collision::TunnelBlockHigh)
-                            {
-                                ctx.drawArray(ffr::DrawType::Quads,16,Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision)].size() - 16);
-                            }
-                        }
-                    }
-
-                }
-
-            }
         }
 
 
 
 
-
-        //ctx.quad(20,50,50,0,100,100,20,100, 65535);
 
         ctx.present();
     }
@@ -164,6 +101,7 @@ private:
 
     Player* current_player_{nullptr};
     std::span<Vertex const> current_ship_mesh_{};
+
 
 };
 

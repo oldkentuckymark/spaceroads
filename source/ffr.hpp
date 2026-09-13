@@ -272,7 +272,7 @@ public:
             for (int y = y1; y < y2; ++y)
             {
                 int16_t xx0 = xLong; int16_t yy0 = y; int16_t xx1 = xShort;
-                util::sort(xx0,xx1);
+                util::order(xx0,xx1);
                 auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
                 if(r == 0) {return;}
                 if(r == 1)
@@ -569,7 +569,7 @@ protected:
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
         if (y0 >= viewport_height_) { return 0; }    // below screen: nothing further can be visible
-        util::sort(x0,x1);
+        util::order(x0,x1);
         if (x0 < 0 && x1 < 0)      { return -1; }
         if (x0 >= viewport_width_ && x1 >= viewport_width_) { return -1; }
         if(x0 < 0) {x0 = 0;}

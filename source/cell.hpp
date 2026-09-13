@@ -44,6 +44,23 @@ public:
         End
     };
 
+    constexpr auto height() const -> int16_t
+    {
+        int16_t cc = static_cast<int16_t>(collision);
+        if(cc >= 0 && cc <= 5)
+        {
+            return 0;
+        }
+        else if(cc >= 6 && cc <= 10)
+        {
+            return 1;
+        }
+        else
+        {
+            return 2;
+        }
+    }
+
 
     constexpr static auto isTunnel(Collision c) -> bool
     {

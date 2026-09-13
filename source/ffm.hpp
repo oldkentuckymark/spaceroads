@@ -105,6 +105,18 @@ public:
         return (*this);
     }
 
+    constexpr auto operator+=(fixed32 const that) -> fixed32&
+    {
+        data += that.data;
+        return (*this);
+    }
+
+    constexpr auto operator-=(fixed32 const that) -> fixed32&
+    {
+        data -= that.data;
+        return (*this);
+    }
+
      constexpr explicit operator int8_t() const { return data >> FIX_SHIFT; }
 
      constexpr operator int16_t() const { return data >> FIX_SHIFT; }
@@ -222,34 +234,43 @@ private:
 
 public:
 
-     constexpr auto operator/(fixed32 const &that) const -> fixed32
+    constexpr auto operator/(fixed32 const &that) const -> fixed32
     {
         fixed32 r;
         r = (*this) * invZ(that);
         return r;
     }
 
-     constexpr auto doubled() const -> fixed32
+    constexpr auto doubled() const -> fixed32
     {
         fixed32 r;
         r.data = this->data << 1;
         return r;
     }
 
-     constexpr auto halved() const -> fixed32
+    constexpr auto halved() const -> fixed32
     {
         fixed32 r;
         r.data = this->data >> 1;
         return r;
     }
 
-     constexpr static auto tiny() -> fixed32
+    constexpr static auto tiny() -> fixed32
     {
         fixed32 r;
         r.data = 1;
         return r;
     }
+
+    constexpr static auto max() -> fixed32
+    {
+        fixed32 r;
+        r.data = 0b11111111111111111111111111111111;
+        return r;
+    }
+
 };
+
 
 }
 
