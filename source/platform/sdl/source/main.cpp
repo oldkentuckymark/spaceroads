@@ -15,52 +15,84 @@
 class VertexFunction
 {
 public:
-
     auto operator()(ffm::vec3& in) -> void
     {
-
         using namespace ffm;
-        // Precompute sines and cosines
-        fixed32 const cx = cos(modelRotation.x);
-        fixed32 const sx = sin(modelRotation.x);
 
-        fixed32 const cy = cos(modelRotation.y);
-        fixed32 const sy = sin(modelRotation.y);
+        // ==========================================
+        // 1. MODEL TRANSFORMATION (Model Space -> World Space)
+        // ==========================================
+        fixed32 const mcx = cosgd(modelRotation.x);
+        fixed32 const msx = singd(modelRotation.x);
 
-        fixed32 const cz = cos(modelRotation.z);
-        fixed32 const sz = sin(modelRotation.z);
+        fixed32 const mcy = cosgd(modelRotation.y);
+        fixed32 const msy = singd(modelRotation.y);
 
-        // --- Rotate around X ---
+        fixed32 const mcz = cosgd(modelRotation.z);
+        fixed32 const msz = singd(modelRotation.z);
+
+        // --- Model Rotate X ---
         vec3 rx;
         rx.x = in.x;
-        rx.y = in.y * cx - in.z * sx;
-        rx.z = in.y * sx + in.z * cx;
+        rx.y = in.y * mcx - in.z * msx;
+        rx.z = in.y * msx + in.z * mcx;
 
-        // --- Rotate around Y ---
+        // --- Model Rotate Y ---
         vec3 ry;
-        ry.x = rx.x * cy + rx.z * sy;
+        ry.x = rx.x * mcy + rx.z * msy;
         ry.y = rx.y;
-        ry.z = -rx.x * sy + rx.z * cy;
+        ry.z = -rx.x * msy + rx.z * mcy;
 
-        // --- Rotate around Z ---
+        // --- Model Rotate Z ---
         vec3 rz;
-        rz.x = ry.x * cz - ry.y * sz;
-        rz.y = ry.x * sz + ry.y * cz;
+        rz.x = ry.x * mcz - ry.y * msz;
+        rz.y = ry.x * msz + ry.y * mcz;
         rz.z = ry.z;
 
+        // Translate to Camera Relative Position
+        vec3 worldPos = rz + modelPos - camPos;
 
+        // ==========================================
+        // 2. CAMERA VIEW TRANSFORMATION (World Space -> View Space)
+        // Inverse Angles: cos(-a) = cos(a), sin(-a) = -sin(a)
+        // Reverse Order: Z -> Y -> X
+        // ==========================================
+        fixed32 const ccx = cosgd(camRot.x);
+        fixed32 const csx = singd(camRot.x);
 
-        in = rz;
+        fixed32 const ccy = cosgd(camRot.y);
+        fixed32 const csy = singd(camRot.y);
 
-        in = in + modelPos - camPos;
+        fixed32 const ccz = cosgd(camRot.z);
+        fixed32 const csz = singd(camRot.z);
 
+        // --- Camera Inverse Rotate Z (-camRot.z) ---
+        vec3 crz;
+        crz.x =  worldPos.x * ccz + worldPos.y * csz;
+        crz.y = -worldPos.x * csz + worldPos.y * ccz;
+        crz.z =  worldPos.z;
+
+        // --- Camera Inverse Rotate Y (-camRot.y) ---
+        vec3 cry;
+        cry.x =  crz.x * ccy - crz.z * csy;
+        cry.y =  crz.y;
+        cry.z =  crz.x * csy + crz.z * ccy;
+
+        // --- Camera Inverse Rotate X (-camRot.x) ---
+        vec3 crx;
+        crx.x =  cry.x;
+        crx.y =  cry.y * ccx + cry.z * csx;
+        crx.z = -cry.y * csx + cry.z * ccx;
+
+        // Output final View Space vertex
+        in = crx;
+        //camRot.y = camRot.y + 0.0001_fx;
     }
 
-    ffm::vec3 camPos{0.0_fx,0.0_fx,0_fx};
-    ffm::vec3 camRot{0.0_fx,0.0_fx,0_fx};
-    ffm::vec3 modelPos{0.0_fx,0.0_fx,0.0_fx};
-    ffm::vec3 modelRotation{0_fx,0_fx,0_fx};
-
+    ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::vec3 camRot{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::vec3 modelPos{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::vec3 modelRotation{0.0_fx, 0.0_fx, 0.0_fx};
 };
 
 
@@ -206,10 +238,14 @@ auto main() -> int
         if (keys[SDL_SCANCODE_S])
         {
             inputs[8] = true;
+
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.001;
         }
         if (keys[SDL_SCANCODE_A])
         {
             inputs[9] = true;
+
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.001;
         }
         }
 

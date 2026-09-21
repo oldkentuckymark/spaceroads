@@ -16,7 +16,7 @@ class Renderer
 {
 public:
 
-    constexpr static uint32_t DRAW_DISTANCE{8};
+    constexpr static uint32_t DRAW_DISTANCE{10};
 
     Renderer()
     {
@@ -63,7 +63,7 @@ public:
         if (px > 8) { px = 8; }
 
 
-        auto rf = castRayField({campos.x,campos.y}, camyaw, current_level_);
+        auto rf = castRayField({campos.x,campos.z}, camyaw, current_level_);
         auto cl = getVisibleMeshesBackToFront(rf);
 
         for(VisitedMeshCell const& vmc : cl)
@@ -94,15 +94,16 @@ public:
         ctx.present();
     }
 
+        Context ctx;
 private:
-    Context ctx;
+
 
     ILevel const * current_level_{nullptr};
 
     Player* current_player_{nullptr};
     std::span<Vertex const> current_ship_mesh_{};
 
-    constexpr static uint32_t NUM_RAYS{33};
+    constexpr static uint32_t NUM_RAYS{19};
     constexpr static uint32_t MAX_DEDUP_BLOCKS = NUM_RAYS * DRAW_DISTANCE;
 
     using VisitedCell = std::tuple<int16_t, int16_t, ffm::fixed32>;
@@ -114,13 +115,18 @@ private:
     {
         std::array<ffm::vec2, N> r{};
         constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
+        // Half-step offset keeps angles away from exact cardinal axes (0, 90, 180, 270 deg)
+        constexpr double offset = step * 0.001;
 
         for (size_t i = 0; i < N; ++i)
         {
-            double theta = step * static_cast<double>(i);
+            double const theta = (step * static_cast<double>(i)) + offset;
+
+            // Standard Cartesian convention (CCW rotation):
+            // X = cos(theta), Z = sin(theta)
             r[i] = ffm::vec2(
-                ffm::fixed32(std::sin(theta)), // X component (+X is Right, -X is Left)
-                ffm::fixed32(std::cos(theta))  // Y/Z component (+Z is Forward)
+                ffm::fixed32(std::cos(theta)), // Always non-zero!
+                ffm::fixed32(std::sin(theta))  // Always non-zero!
                 );
         }
         return r;
@@ -131,33 +137,22 @@ private:
     {
         std::array<ffm::vec2, N> r{};
         constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
-
-        // Maximum safe float representation that fits inside a signed Q16.16 fixed32
-        // INT32_MAX (2147483647) / 65536.0 ≈ 32767.9999
-        constexpr double maxFixedVal = 32767.0;
+        constexpr double offset = step * 0.001;
 
         for (size_t i = 0; i < N; ++i)
         {
-            double theta = step * static_cast<double>(i);
-            double dx = std::sin(theta);
-            double dy = std::cos(theta);
+            double const theta = (step * static_cast<double>(i)) + offset;
+            double const dx = std::cos(theta); // X = cos
+            double const dz = std::sin(theta); // Z = sin
 
-            // Guard against division by zero and cap to max fixed32 capacity
-            double invX = (std::abs(dx) > 1e-9) ? (1.0 / dx) : ((dx < 0) ? -maxFixedVal : maxFixedVal);
-            double invY = (std::abs(dy) > 1e-9) ? (1.0 / dy) : ((dy < 0) ? -maxFixedVal : maxFixedVal);
-
-            // Clamp extreme values if reciprocal slightly exceeds maxFixedVal range
-            invX = std::clamp(invX, -maxFixedVal, maxFixedVal);
-            invY = std::clamp(invY, -maxFixedVal, maxFixedVal);
-
+            // Division by zero impossible due to the half-step offset
             r[i] = ffm::vec2(
-                ffm::fixed32(invX),
-                ffm::fixed32(invY)
+                ffm::fixed32(1.0 / dx),
+                ffm::fixed32(1.0 / dz)
                 );
         }
         return r;
     }
-
     auto static constexpr dxDyTable = makedXdYTable();
     auto static constexpr invDxDyTable = makeInvdXdYTable();
 
@@ -189,139 +184,145 @@ private:
         return static_cast<size_t>((rawGamDegs % 64 + 64) % 64);
     }
 
-    [[nodiscard]] auto raycastDDA(
-        ffm::vec2 const cameraPos,
-        ffm::fixed32 const yawInGamDegs,
-        ILevel const* level
-        ) -> std::inplace_vector<VisitedCell, DRAW_DISTANCE>
-    {
-        std::inplace_vector<VisitedCell, DRAW_DISTANCE> encounteredBlocks;
-        uint32_t const levelLength = static_cast<uint32_t>(level->getLength());
-
-        // Positive modulo 0..63 table indexing
-        int32_t const rawGamDegs = yawInGamDegs.data >> 16;
-        size_t const angleIdx = static_cast<size_t>((rawGamDegs % 64 + 64) % 64);
-
-        ffm::vec2 const dir = dxDyTable[angleIdx];
-        ffm::vec2 const invDir = invDxDyTable[angleIdx];
-
-        if (dir.x.data == 0 && dir.y.data == 0) [[unlikely]] {
-            return encounteredBlocks;
-        }
-
-        // Grid coordinates
-        int mapX = cameraPos.x.data >> 16;
-        int mapZ = cameraPos.y.data >> 17; // Cell height = 2.0 (128k units)
-
-        // Delta Distances
-        ffm::fixed32 deltaDistX;
-        ffm::fixed32 deltaDistZ;
-        deltaDistX.data = (invDir.x.data != 0) ? std::abs(invDir.x.data) : ffm::fixed32::max().data;
-
-        int32_t const absInvY = std::abs(invDir.y.data);
-        deltaDistZ.data = (absInvY != 0) ? (absInvY << 1) : ffm::fixed32::max().data;
-
-        // Fractional position inside current 1.0 x 2.0 cell
-        uint32_t const rawFracX = static_cast<uint32_t>(cameraPos.x.data) & 0xFFFF;
-        uint32_t const rawFracZ = static_cast<uint32_t>(cameraPos.y.data) & 0x1FFFF;
-
-        int stepX = 0;
-        int stepZ = 0;
-        ffm::fixed32 sideDistX;
-        ffm::fixed32 sideDistZ;
-
-        // --- SYMMETRIC X-AXIS INITIALIZATION ---
-        if (dir.x.data < 0) {
-            stepX = -1;
-            uint32_t const distToLeft = (rawFracX == 0) ? 0x10000 : rawFracX;
-            sideDistX.data = static_cast<int32_t>((static_cast<int64_t>(distToLeft) * deltaDistX.data) >> 16);
-        } else {
-            stepX = 1;
-            uint32_t const distToRight = 0x10000 - rawFracX;
-            sideDistX.data = static_cast<int32_t>((static_cast<int64_t>(distToRight) * deltaDistX.data) >> 16);
-        }
-
-        // --- SYMMETRIC Z-AXIS INITIALIZATION ---
-        if (dir.y.data < 0) {
-            stepZ = -1;
-            uint32_t const distToBottom = (rawFracZ == 0) ? 0x20000 : rawFracZ;
-            sideDistZ.data = static_cast<int32_t>((static_cast<int64_t>(distToBottom) * deltaDistZ.data) >> 17);
-        } else {
-            stepZ = 1;
-            uint32_t const distToTop = 0x20000 - rawFracZ;
-            sideDistZ.data = static_cast<int32_t>((static_cast<int64_t>(distToTop) * deltaDistZ.data) >> 17);
-        }
-
-        // DDA Step Loop
-        for (uint32_t step = 0; step < DRAW_DISTANCE; ++step)
-        {
-            if (sideDistX.data < sideDistZ.data) {
-                sideDistX.data += deltaDistX.data;
-                mapX += stepX;
-            } else {
-                sideDistZ.data += deltaDistZ.data;
-                mapZ += stepZ;
-            }
-
-            if (static_cast<uint32_t>(mapX) >= static_cast<uint32_t>(ILevel::LEVEL_WIDTH) ||
-                static_cast<uint32_t>(mapZ) >= levelLength) [[unlikely]]
-            {
-                break;
-            }
-
-            if (level->getCell(mapX, mapZ).collision != Cell::Collision::Empty)
-            {
-                ffm::fixed32 blockWorldX;
-                ffm::fixed32 blockWorldZ;
-                blockWorldX.data = (mapX << 16) + 0x8000;
-                blockWorldZ.data = (mapZ << 17) + 0x10000;
-
-                ffm::fixed32 const dx = blockWorldX - cameraPos.x;
-                ffm::fixed32 const dz = blockWorldZ - cameraPos.y;
-
-                encounteredBlocks.emplace_back(
-                    static_cast<int16_t>(mapX),
-                    static_cast<int16_t>(mapZ),
-                    (dx * dx) + (dz * dz)
-                    );
-
-                if (encounteredBlocks.size() == DRAW_DISTANCE) [[unlikely]] {
-                    break;
-                }
-            }
-        }
-
-        return encounteredBlocks;
-    }
 
     [[nodiscard]] auto castRayField(
         ffm::vec2 const cameraPos,
-        ffm::fixed32 const centerYawInGamDegs,
+        ffm::fixed32 const yawInGamDegs,
         ILevel const* level
-        ) -> std::inplace_vector<RayResult, NUM_RAYS>
+        ) -> std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS>
     {
-        std::inplace_vector<RayResult, NUM_RAYS> rayField;
+        std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS> rayField;
 
-        // Ray 0:   centerYaw - 8.0 GAMDEGS (-45.0°)
-        // Ray 16:  centerYaw + 0.0 GAMDEGS ( 0.0° - Center)
-        // Ray 32:  centerYaw + 8.0 GAMDEGS (+45.0°)
-        ffm::fixed32 currentYaw = centerYawInGamDegs - 8_fx;
+        int const levelLength = static_cast<int>(level->getLength());
+        constexpr int LEVEL_WIDTH = static_cast<int>(ILevel::LEVEL_WIDTH);
 
-        for (uint32_t i = 0; i < NUM_RAYS; ++i)
+        constexpr int32_t CELL_SIZE_X = 65536;   // 1.0_fx
+        constexpr int32_t CELL_SIZE_Z = 131072;  // 2.0_fx
+
+        auto const floorDiv = [](int32_t val, int32_t div) -> int {
+            if (val >= 0) return val / div;
+            return (val - div + 1) / div;
+        };
+
+        auto const posMod = [](int32_t val, int32_t div) -> uint32_t {
+            int32_t const r = val % div;
+            return static_cast<uint32_t>(r < 0 ? r + div : r);
+        };
+
+        int32_t const camX = static_cast<int32_t>(cameraPos.x.data);
+        int32_t const camZ = static_cast<int32_t>(cameraPos.y.data);
+
+        int const baseMapX = floorDiv(camX, CELL_SIZE_X);
+        int const baseMapZ = floorDiv(camZ, CELL_SIZE_Z);
+
+        uint32_t const rawFracX = posMod(camX, CELL_SIZE_X);
+        uint32_t const rawFracZ = posMod(camZ, CELL_SIZE_Z);
+
+        ffm::fixed32 const halfFov = ffm::fixed32(8); // 45 degrees
+        ffm::fixed32 const startAngle = yawInGamDegs + halfFov;
+
+        ffm::fixed32 const fovStep = (NUM_RAYS > 1)
+                                         ? (ffm::fixed32(16) / ffm::fixed32(static_cast<int16_t>(NUM_RAYS - 1)))
+                                         : ffm::fixed32(0);
+
+        for (uint32_t rayIdx = 0; rayIdx < NUM_RAYS; ++rayIdx)
         {
-            rayField.unchecked_emplace_back(
-                raycastDDA(cameraPos, currentYaw, level)
-                );
+            auto& encounteredBlocks = rayField[rayIdx];
 
-            // 0.5 GAMDEG step = 0x8000 in Q16.16
-            currentYaw.data += 0x8000;
+            ffm::fixed32 const rayAngle = startAngle - (fovStep * ffm::fixed32(static_cast<int16_t>(rayIdx)));
+
+            // Offset +16 GamDegs so 0 deg yaw faces Forward (+Z)
+            int32_t const rawGamDegs = (rayAngle.data >> 16) + 16;
+            size_t const angleIdx = static_cast<size_t>((rawGamDegs % 64 + 64) % 64);
+
+            ffm::vec2 const dir = dxDyTable[angleIdx];
+            ffm::vec2 const invDir = invDxDyTable[angleIdx];
+
+            ffm::fixed32 deltaDistX;
+            ffm::fixed32 deltaDistZ;
+            deltaDistX.data = std::abs(invDir.x.data);
+            deltaDistZ.data = std::abs(invDir.y.data) << 1;
+
+            int stepX = 0;
+            int stepZ = 0;
+            ffm::fixed32 sideDistX;
+            ffm::fixed32 sideDistZ;
+
+            if (dir.x.data < 0) {
+                stepX = -1;
+                uint32_t const distToBoundary = rawFracX;
+                sideDistX.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistX.data >> 8)) >> 8);
+            } else {
+                stepX = 1;
+                uint32_t const distToBoundary = CELL_SIZE_X - rawFracX;
+                sideDistX.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistX.data >> 8)) >> 8);
+            }
+
+            if (dir.y.data < 0) {
+                stepZ = -1;
+                uint32_t const distToBoundary = rawFracZ;
+                sideDistZ.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistZ.data >> 8)) >> 9);
+            } else {
+                stepZ = 1;
+                uint32_t const distToBoundary = CELL_SIZE_Z - rawFracZ;
+                sideDistZ.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistZ.data >> 8)) >> 9);
+            }
+
+            int mapX = baseMapX;
+            int mapZ = baseMapZ;
+
+            auto const inspectCell = [&](int x, int z) {
+                if (x >= 0 && x < LEVEL_WIDTH && z >= 0 && z < levelLength) {
+                    if (level->getCell(x, z).collision != Cell::Collision::Empty) {
+                        if (encounteredBlocks.size() < DRAW_DISTANCE) {
+                            ffm::fixed32 blockWorldX;
+                            ffm::fixed32 blockWorldZ;
+
+                            blockWorldX.data = (x * CELL_SIZE_X) + (CELL_SIZE_X / 2);
+                            blockWorldZ.data = (z * CELL_SIZE_Z) + (CELL_SIZE_Z / 2);
+
+                            ffm::fixed32 const dx = blockWorldX - cameraPos.x;
+                            ffm::fixed32 const dz = blockWorldZ - cameraPos.y;
+
+                            encounteredBlocks.emplace_back(
+                                static_cast<int16_t>(x),
+                                static_cast<int16_t>(z),
+                                (dx * dx) + (dz * dz)
+                                );
+                        }
+                    }
+                }
+            };
+
+            // 1. Inspect initial camera cell
+            inspectCell(mapX, mapZ);
+
+            // 2. DDA Step Loop: Bounded strictly by DRAW_DISTANCE visited cells
+            for (uint32_t step = 0; step < DRAW_DISTANCE; ++step)
+            {
+                if (sideDistX.data < sideDistZ.data) {
+                    sideDistX.data += deltaDistX.data;
+                    mapX += stepX;
+                } else {
+                    sideDistZ.data += deltaDistZ.data;
+                    mapZ += stepZ;
+                }
+
+                // Direction-aware world boundary exit check
+                if ((stepX < 0 && mapX < 0) || (stepX > 0 && mapX >= LEVEL_WIDTH) ||
+                    (stepZ < 0 && mapZ < 0) || (stepZ > 0 && mapZ >= levelLength)) [[unlikely]] {
+                    break;
+                }
+
+                inspectCell(mapX, mapZ);
+            }
         }
 
         return rayField;
     }
 
     [[nodiscard]] auto getVisibleMeshesBackToFront(
-        std::inplace_vector<RayResult, NUM_RAYS> const& rayField
+        std::array<RayResult, NUM_RAYS> const& rayField
         ) -> std::inplace_vector<VisitedMeshCell, MAX_DEDUP_BLOCKS>
     {
         std::inplace_vector<VisitedMeshCell, MAX_DEDUP_BLOCKS> visibleMeshes;
