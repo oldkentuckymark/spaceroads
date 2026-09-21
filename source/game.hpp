@@ -53,12 +53,17 @@ public:
         }
         if(inputs[RIGHT])
         {
-            player_.velocity.x = player_.velocity.x + player_.acceleration;
+            player_.velocity.x = player_.xSpeed;
         }
         if(inputs[LEFT])
         {
-            player_.velocity.x = player_.velocity.x - player_.acceleration;
+            player_.velocity.x = -player_.xSpeed;
         }
+        if(!inputs[LEFT] && !inputs[RIGHT])
+        {
+            player_.velocity.x = 0.0_fx;
+        }
+
 
     }
 
@@ -70,9 +75,9 @@ public:
 
     }
 
-    auto update() -> void
+    auto update(ffm::fixed32 dt) -> void
     {
-        player_.position = player_.position + player_.velocity;
+        player_.position = player_.position + (player_.velocity * dt);
     }
 
 private:

@@ -72,27 +72,27 @@ public:
         : data(that << FIX_SHIFT)
     {}
 
-     constexpr explicit fixed32(int32_t const &that)
+    constexpr explicit fixed32(int32_t const &that)
         : data(that << FIX_SHIFT)
     {}
 
-     constexpr explicit fixed32(double const &that)
+    constexpr explicit fixed32(double const &that)
         : data(static_cast<int32_t>(that * FIX_SCALEF))
     {}
 
-     constexpr auto operator=(int8_t const that) -> fixed32 &
+    constexpr auto operator=(int8_t const that) -> fixed32 &
     {
         data = that << FIX_SHIFT;
         return (*this);
     }
 
-     constexpr auto operator=(int16_t const that) -> fixed32 &
+    constexpr auto operator=(int16_t const that) -> fixed32 &
     {
         data = that << FIX_SHIFT;
         return (*this);
     }
 
-     constexpr auto operator=(int32_t const that) -> fixed32 &
+    constexpr auto operator=(int32_t const that) -> fixed32 &
     {
         data = that << FIX_SHIFT;
         return (*this);
@@ -265,7 +265,7 @@ public:
     constexpr static auto max() -> fixed32
     {
         fixed32 r;
-        r.data = 0b11111111111111111111111111111111;
+        r.data = 0x7FFFFFFF;
         return r;
     }
 
@@ -290,14 +290,12 @@ namespace ffm
 {
 
 
-
-constexpr uint32_t GAMDEG_IN_CIRCLE = 512; //360 = degrees, 21600 = minutes
-constexpr fixed32 TAU = 6.28318530_fx;
 constexpr double TAUF = 6.28318530;
-constexpr double RAD_TO_GAMDEGF = GAMDEG_IN_CIRCLE / TAUF;
+constexpr fixed32 TAU = 6.28318530_fx;
+constexpr size_t GAMDEG_IN_CIRCLE = 256; //must be power of 2
 constexpr fixed32 RAD_TO_GAMDEG = fixed32(GAMDEG_IN_CIRCLE / TAUF);
-
-
+constexpr fixed32 GAMDEG_TO_RAD = static_cast<fixed32>(TAUF / GAMDEG_IN_CIRCLE);
+constexpr uint16_t QUADRANT_GAMDEG{GAMDEG_IN_CIRCLE / 4};
 
  [[nodiscard]] constexpr auto factorial(auto const n) -> decltype(n)
 {
@@ -322,19 +320,6 @@ namespace
 {
 using LUT = std::array<fixed32, GAMDEG_IN_CIRCLE>;
 
-
-
-
-
-
-consteval auto taylorSin(double const x) -> double
-{
-    double const ts = x - ((x * x * x) / 6.0f) + ((x * x * x * x * x) / 120.0f)
-                     - ((x * x * x * x * x * x * x) / 5040.0f)
-                     + ((x * x * x * x * x * x * x * x * x) / 32880.0f);
-    return ts;
-}
-
 consteval auto makeSinTable() -> LUT
 {
     uint16_t const quadrantSize = GAMDEG_IN_CIRCLE/4;
@@ -344,7 +329,7 @@ consteval auto makeSinTable() -> LUT
     for (uint16_t i = 0; i <= quadrantSize; ++i)
     {
         double x = (TAUF / GAMDEG_IN_CIRCLE) * i;
-        r[i] = taylorSin(x);
+        r[i] = std::sin(x);
         r[k] = r[i];
         --k;
     }
@@ -364,41 +349,9 @@ consteval auto makeSinTable() -> LUT
     return r;
 }
 
-consteval auto taylorCos(double const x) -> double
+[[nodiscard]] constexpr auto clampGamdeg(int16_t gamdeg) -> int16_t
 {
-    double const tc = 1.0f - ((x * x) / 2.0f) + ((x * x * x * x) / 24.0f)
-                     - ((x * x * x * x * x * x) / 720.0f)
-                     + ((x * x * x * x * x * x * x * x) / 40320.0f);
-    return tc;
-}
-
-consteval auto makeCosTable() -> LUT
-{
-    const std::size_t quadrantSize = GAMDEG_IN_CIRCLE/4;
-    LUT r{};
-
-    std::size_t k = (quadrantSize*2);
-    for (std::size_t i = 0; i <= quadrantSize; ++i)
-    {
-        double const x = (TAUF / GAMDEG_IN_CIRCLE) * i;
-        r[i] = taylorCos(x);
-        r[k] = -r[i];
-        --k;
-    }
-
-    k = quadrantSize*2;
-    for(std::size_t  i = 0; i < quadrantSize*2; ++i)
-    {
-        r[k] = -r[i];
-        ++k;
-    }
-
-    r[quadrantSize * 0] = 1.0_fx;
-    r[quadrantSize * 1] = 0.0_fx;
-    r[quadrantSize * 2] = -1.0_fx;
-    r[quadrantSize * 3] = 0.0_fx;
-
-    return r;
+    return static_cast<int16_t>(static_cast<uint16_t>(gamdeg) & (GAMDEG_IN_CIRCLE - 1));
 }
 
 consteval auto makeInvsqrtTable() -> LUT
@@ -416,91 +369,130 @@ consteval auto makeInvsqrtTable() -> LUT
     return r;
 }
 
+constexpr auto log2_pow2(size_t n) -> int16_t
+{
+    int16_t shift = 0;
+    while (n > 1)
+    {
+        n >>= 1;
+        ++shift;
+    }
+    return shift;
+}
+
+
+static constexpr LUT SINTABLE{makeSinTable()};
+
 
 } // namespace
 
 
- [[nodiscard]] constexpr auto clampGamdeg(int16_t gamdeg) -> int16_t
+[[nodiscard]] constexpr auto radiansToGamdegs(fixed32 const a) -> int16_t
 {
-    return (gamdeg % GAMDEG_IN_CIRCLE + GAMDEG_IN_CIRCLE) % GAMDEG_IN_CIRCLE;
+    // 1. Single fixed-point multiply
+    fixed32 const gamdegs = a * RAD_TO_GAMDEG;
+
+    // 0.5 in Q16.16 format is 0x8000 (1 << 15)
+    constexpr int32_t HALF_Q16 = 1 << (fixed32::FIX_SHIFT - 1);
+
+    // 2. Branchless symmetric rounding on raw data
+    // Positive: add 0x8000 | Negative: subtract 0x8000
+    int32_t raw = gamdegs.data;
+    raw += (raw >= 0) ? HALF_Q16 : -HALF_Q16;
+
+    // 3. Extract integer portion via 16-bit arithmetic right shift
+    return static_cast<int16_t>(raw >> fixed32::FIX_SHIFT);
 }
 
- [[nodiscard]] constexpr auto sin(fixed32 const a) -> fixed32
+[[nodiscard]] constexpr auto gamDegsToRadians(int16_t const a) -> fixed32
 {
-    static constexpr auto SINTABLE = makeSinTable();
+    constexpr int SHIFT = log2_pow2(GAMDEG_IN_CIRCLE);
 
-    fixed32 const gd = a * RAD_TO_GAMDEG;
-    int16_t const gdi = clampGamdeg(static_cast<int16_t>(gd));
+    // Multiply int16_t 'a' directly by TAU's raw Q16.16 value.
+    // Result is in Q16.16 format shifted UP by 16 bits relative to 'a'.
+    // TOTAL_SHIFT combines Q16.16 realignment (16) + GAMDEG division (SHIFT).
+    constexpr int TOTAL_SHIFT = fixed32::FIX_SHIFT + SHIFT;
 
-    return fixed32{SINTABLE[gdi]};
+    int64_t const product = static_cast<int64_t>(a) * TAU.data;
+
+    fixed32 r;
+    r.data = static_cast<int32_t>(product >> TOTAL_SHIFT);
+    return r;
 }
 
- [[nodiscard]] constexpr auto cos(fixed32 const a) -> fixed32
+[[nodiscard]] constexpr auto singd(fixed32 const a) -> fixed32
 {
-    static constexpr LUT COSTABLE = makeCosTable();
+    uint16_t const raw = static_cast<uint16_t>(static_cast<int16_t>(a));
+    return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
+}
 
-    fixed32 const gd = a * RAD_TO_GAMDEG;
-    int16_t const gdi = clampGamdeg(static_cast<int16_t>(gd));
+[[nodiscard]] constexpr auto cosgd(fixed32 const a) -> fixed32
+{
+    uint16_t const raw = static_cast<uint16_t>(static_cast<int16_t>(a)) + QUADRANT_GAMDEG;
+    return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
+}
 
-    return fixed32{COSTABLE[gdi]};
+[[nodiscard]] constexpr auto sin(fixed32 const a) -> fixed32
+{
+    return singd(a * RAD_TO_GAMDEG);
+}
+
+[[nodiscard]] constexpr auto cos(fixed32 const a) -> fixed32
+{
+    return cosgd(a * RAD_TO_GAMDEG);
 }
 
  [[nodiscard]] constexpr auto tan(fixed32 const n) -> fixed32
 {
-    return sin(n) / cos(n);
+    return ffm::sin(n) / ffm::cos(n);
 }
 
  [[nodiscard]] constexpr auto cot(fixed32 const n) -> fixed32
 {
-    return cos(n) / sin(n);
+    return ffm::cos(n) / ffm::sin(n);
 }
 
  [[nodiscard]] constexpr auto abs(auto const n) -> decltype(n)
 {
-    return (n > 0) ? n : -n;
+    return (n > decltype(n)(0)) ? n : -n;
 }
 
- [[nodiscard]] constexpr auto abs(fixed32 const n) -> fixed32
+//[[nodiscard]] constexpr auto abs(fixed32 const n) -> fixed32
+//{
+//    return (n > 0.0_fx) ? n : -n;
+//}
+
+constexpr auto sqrt(fixed32 const x) -> fixed32
 {
-    return (n > 0.0_fx) ? n : -n;
-}
+    fixed32 r{};
+    if (x.data <= 0) { return r; }
 
- constexpr auto sqrt(fixed32 const x) -> fixed32
-{
-    fixed32 r;
-    if (x.data <= 0) {return r;}
+    // x.data is positive Q16.16 (max ~32767.999, so highest bit set is <= bit 30).
+    // We compute sqrt(x.data) in integer domain, yielding result in Q8.8 format.
+    // Shifting left by 8 turns Q8.8 into Q16.16 format.
+    uint32_t n = static_cast<uint32_t>(x.data);
+    uint32_t res = 0;
+    uint32_t bit = 1U << 30; // Highest power of 4 fitting in uint32_t
 
-    using wide_t = int64_t;
-
-    wide_t n = static_cast<wide_t>(x.data) << fixed32::FIX_SHIFT;
-
-    wide_t result = 0;
-    wide_t bit = wide_t{1} << 30;
-
-    // Find the largest power of 4 <= n.
-    while (bit > n)
+// Unroll or step through fixed 16 iterations (always 16 for 32-bit integer sqrt)
+#pragma unroll
+    for (int i = 0; i < 16; ++i)
     {
-        bit >>= 2;
-    }
-
-    // Integer square root (binary restoring algorithm).
-    while (bit != 0)
-    {
-        if (n >= result + bit)
+        uint32_t const trial = res + bit;
+        if (n >= trial)
         {
-            n -= result + bit;
-            result = (result >> 1) + bit;
+            n -= trial;
+            res = (res >> 1) + bit;
         }
         else
         {
-            result >>= 1;
+            res >>= 1;
         }
-
         bit >>= 2;
     }
 
-
-    r.data = static_cast<int32_t>(result);
+    // res is now in Q8.8 format; shift left by 8 bits to convert to Q16.16 (.data)
+    r.data = static_cast<int32_t>(res << 8);
     return r;
 }
 

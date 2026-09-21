@@ -5,38 +5,24 @@
 namespace ffp
 {
 
-using namespace ffm;
-
 class AABB
 {
 public:
-    vec3 min, max;
+    ffm::vec3 min, max;
 };
 
-class Ray
+[[nodiscard]] constexpr auto intersect(AABB const & a, AABB const & b) -> ffm::vec3
 {
-public:
-    vec3 origin, direction;
-};
+    ffm::fixed32 dx = ffm::min(a.max.x, b.max.x) - ffm::max(a.min.x, b.min.x);
+    if (dx < 0.0_fx) { return {}; } // No overlap in X
 
-class Sphere
-{
-    vec3 center;
-    fixed32 radius;
-};
+    ffm::fixed32 dy = ffm::min(a.max.y, b.max.y) - ffm::max(a.min.y, b.min.y);
+    if (dy < 0.0_fx) { return {}; } // No overlap in Y
 
-[[nodiscard]] constexpr auto intersect(AABB const & a, AABB const & b) -> vec3
-{
-    fixed32 const dx = min(a.max.x, b.max.x) - max(a.min.x, b.min.x);
-    fixed32 const dy = min(a.max.y, b.max.y) - max(a.min.y, b.min.y);
-    fixed32 const dz = min(a.max.z, b.max.z) - max(a.min.z, b.min.z);
+    ffm::fixed32 dz = ffm::min(a.max.z, b.max.z) - ffm::max(a.min.z, b.min.z);
+    if (dz < 0.0_fx) { return {}; } // No overlap in Z
 
-    if(dx < 0.0_fx || dy < 0.0_fx || dz < 0.0_fx)
-    {
-        return {};
-    };
-
-    return { dx, dy, dz };
+    return ffm::vec3(dx, dy, dz);
 }
 
 

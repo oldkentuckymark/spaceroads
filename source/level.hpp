@@ -504,7 +504,7 @@ public:
             else
             {
                 //c = 15;
-                throw "ERROR: Invalid data in level file!";
+                //throw "ERROR: Invalid data in level file!";
             }
 
             return c;

@@ -57,6 +57,7 @@ public:
     }
 
     ffm::vec3 camPos{0.0_fx,0.0_fx,0_fx};
+    ffm::vec3 camRot{0.0_fx,0.0_fx,0_fx};
     ffm::vec3 modelPos{0.0_fx,0.0_fx,0.0_fx};
     ffm::vec3 modelRotation{0_fx,0_fx,0_fx};
 
@@ -131,7 +132,7 @@ private:
 
 auto main() -> int
 {
-
+    constexpr ffm::fixed32 dt = ffm::fixed32(1.0/60.0);
     auto const * const lp = &level0;
 
 
@@ -143,8 +144,9 @@ auto main() -> int
 
     renderer.setPlayer(&game.player());
     renderer.setPlayerMesh(Mesh::SHIP_MESH);
-    renderer.setDrawDistance(8);
     renderer.setLevel(&level0);
+
+
 
     bool running = true;
     while (running)
@@ -217,7 +219,7 @@ auto main() -> int
         {
 
             game.processInputs(inputs);
-            game.update();
+            game.update(dt);
             renderer.draw();
 
             auto dt = static_cast<uint16_t>(std::chrono::duration_cast<std::chrono::milliseconds>(c2-c1).count());

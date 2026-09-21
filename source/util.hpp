@@ -183,7 +183,7 @@ constexpr auto sort(RandomIt begin, RandomIt end, Compare comp) -> void
             *j = *(j - 1);
             --j;
         }
-        *j = key;
+        *j = std::move(key);
     }
 }
 

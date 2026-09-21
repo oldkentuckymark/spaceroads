@@ -31,7 +31,7 @@ class FFT
 {
 public:
 
-     auto operator()(ffm::vec3& in) -> void
+    auto operator()(ffm::vec3& in) -> void
     {
 
         using namespace ffm;
@@ -266,6 +266,115 @@ uint32_t getKeyState(uint16_t key_code)
     return !(key_code & (REG_KEYINPUT | KEY_MASK) );
 }
 
+
+
+class FixedPointTimer
+{
+public:
+
+    static constexpr uint32_t TIMER_BASE_ADDR = 0x04000100;
+    static constexpr uint32_t CPU_CLOCK_HZ = 16777216; // ~16.78 MHz
+
+
+    static constexpr uint32_t PRESCALER_DIVS[] = {1, 64, 256, 1024};
+
+private:
+
+    uint8_t timer_id;
+    uint16_t prev_counter;
+    bool running;
+    uint32_t current_prescaler_divisor;
+
+
+    auto getControlReg() -> volatile uint16_t*
+    {
+        return reinterpret_cast<volatile uint16_t*>(TIMER_BASE_ADDR + (timer_id * 4) + 2);
+    }
+
+
+    auto getCounterReg() -> volatile uint16_t*
+    {
+        return reinterpret_cast<volatile uint16_t*>(TIMER_BASE_ADDR + (timer_id * 4));
+    }
+
+public:
+
+    FixedPointTimer(uint8_t id = 0)
+        : timer_id(id), prev_counter(0xFFFF), running(false), current_prescaler_divisor(1)
+    {
+
+    }
+
+    ~FixedPointTimer()
+    {
+        stop();
+    }
+
+
+    auto start(uint8_t prescalerIndex = 1) -> void  // Default to DIV64 for reasonable resolution
+    {
+
+        if (prescalerIndex > 3) return; // Invalid
+
+        volatile uint16_t* ctrl = getControlReg();
+
+        // Set prescaler and enable bit
+        *ctrl = (prescalerIndex & 0x03) | 0x80;
+
+        current_prescaler_divisor = PRESCALER_DIVS[prescalerIndex];
+        prev_counter = *getCounterReg();
+        running = true;
+    }
+
+    auto stop() -> void
+    {
+        if (!running) return;
+        volatile uint16_t* ctrl = getControlReg();
+        *ctrl &= ~0x80; // Clear enable bit
+        running = false;
+    }
+
+    auto isRunning() const -> bool { return running; }
+
+    auto getDelta() -> ffm::fixed32
+    {
+        if (!running) { return ffm::fixed32{}; }
+
+        volatile uint16_t* counter = getCounterReg();
+        uint16_t current = *counter;
+
+        // Calculate elapsed ticks handling wrap-around
+        // Timer counts DOWN: 0xFFFF -> ... -> 0x0000 -> 0xFFFF
+        int32_t delta_ticks;
+
+        if (current <= prev_counter)
+        {
+            // Normal case: no wrap-around between samples
+            delta_ticks = static_cast<int32_t>(prev_counter) - static_cast<int32_t>(current);
+        }
+        else
+        {
+            // Wrap-around occurred: counter rolled from 0 to 65535
+            delta_ticks = static_cast<int32_t>(prev_counter) + (65536 - current);
+        }
+
+        prev_counter = current;
+
+        // Convert ticks to seconds using fixed-point arithmetic
+        // Formula: Seconds = Ticks / PrescalerDivisor
+        // In Q16.16: Result = (Ticks * 65536) / PrescalerDivisor
+
+        int64_t numerator = static_cast<int64_t>(delta_ticks) * 65536;
+        int32_t result_raw = static_cast<int32_t>(numerator / current_prescaler_divisor);
+
+        ffm::fixed32 r;
+        r.data = result_raw;
+        return r;
+    }
+
+};
+
+
 int main(void)
 {
     // Set up the interrupt handlers
@@ -274,10 +383,12 @@ int main(void)
 
     Game game;
     Renderer<Context> renderer;
+    FixedPointTimer timer(0);
+    timer.start(FixedPointTimer::PRESCALER_DIVS[1]);
 
     renderer.setPlayer(&game.player());
     renderer.setPlayerMesh(Mesh::SHIP_MESH);
-    renderer.setDrawDistance(10);
+    //renderer.setDrawDistance(10);
     renderer.setLevel(&level0);
 
     std::array<bool,10> inputs{};
@@ -300,7 +411,8 @@ int main(void)
 
 
         game.processInputs(inputs);
-        game.update();
+        ffm::fixed32 dt = timer.getDelta();
+        game.update(dt);
         renderer.draw();
     }
 
