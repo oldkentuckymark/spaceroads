@@ -110,18 +110,16 @@ private:
     using RayResult   = std::inplace_vector<VisitedCell, DRAW_DISTANCE>;
     using VisitedMeshCell = std::tuple<int16_t, int16_t, ffm::fixed32>;
 
-    template<size_t N = 64>
-    static consteval auto makedXdYTable() -> std::array<ffm::vec2, N>
+    static consteval auto makedXdYTable() -> std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE>
     {
-        std::array<ffm::vec2, N> r{};
-        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
-        constexpr double offset = step * 0.001; // Half-step offset avoids 0 and infinities
+        std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE> r{};
+        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(ffm::GAMDEG_IN_CIRCLE);
+        constexpr double offset = step * 0.1;
 
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < ffm::GAMDEG_IN_CIRCLE; ++i)
         {
             double const theta = (step * static_cast<double>(i)) + offset;
 
-            // Standard Math: X = cos(theta), Z = sin(theta) (CCW)
             r[i] = ffm::vec2(
                 ffm::fixed32(std::sin(theta)),
                 ffm::fixed32(std::cos(theta))
@@ -130,28 +128,27 @@ private:
         return r;
     }
 
-    template<size_t N = 64>
-    static consteval auto makeInvdXdYTable() -> std::array<ffm::vec2, N>
+    static consteval auto makeInvdXdYTable() -> std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE>
     {
-        std::array<ffm::vec2, N> r{};
-        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
-        constexpr double offset = step * 0.001;
+        std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE> r{};
+        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(ffm::GAMDEG_IN_CIRCLE);
+        constexpr double offset = step * 0.1;
 
         constexpr double MAX_SAFE_INV = 30000.0;
 
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < ffm::GAMDEG_IN_CIRCLE; ++i)
         {
             double const theta = (step * static_cast<double>(i)) + offset;
             double const dx = std::sin(theta);
             double const dz = std::cos(theta);
 
             // Clamp inverse values to prevent Q16.16 overflow near 0
-            double const invDx = std::clamp(1.0 / dx, -MAX_SAFE_INV, MAX_SAFE_INV);
-            double const invDz = std::clamp(1.0 / dz, -MAX_SAFE_INV, MAX_SAFE_INV);
+            double const invdx = std::clamp(1.0 / dx, -MAX_SAFE_INV, MAX_SAFE_INV);
+            double const invdz = std::clamp(1.0 / dz, -MAX_SAFE_INV, MAX_SAFE_INV);
 
             r[i] = ffm::vec2(
-                ffm::fixed32(1.0 / dx),
-                ffm::fixed32(1.0 / dz)
+                ffm::fixed32(1.0 / invdx),
+                ffm::fixed32(1.0 / invdz)
                 );
         }
         return r;
@@ -159,33 +156,6 @@ private:
 
     auto static constexpr dxDyTable = makedXdYTable();
     auto static constexpr invDxDyTable = makeInvdXdYTable();
-
-    template<size_t N = 64>
-    static constexpr auto getdXdYfromYaw(ffm::fixed32 yawGamDegs) -> ffm::vec2
-    {
-        static constexpr auto dXdYTable = makedXdYTable<N>();
-        // Direct power-of-two bitmask indexing for efficient lookup
-        size_t index = static_cast<size_t>(yawGamDegs) & (N - 1);
-        return dXdYTable[index];
-    }
-
-
-    template<size_t N = 64>
-    static constexpr auto getInvdXdYfromYaw(ffm::fixed32 yawGamDegs) -> ffm::vec2
-    {
-        static constexpr auto invdXdYTable = makeInvdXdYTable<N>();
-        size_t index = static_cast<size_t>(yawGamDegs) & (N - 1);
-        return invdXdYTable[index];
-    }
-
-    [[nodiscard]] constexpr static auto gamDegsToLutIndex(ffm::fixed32 const yawGamDegs) -> size_t
-    {
-        // Extract integer GAMDEGS from Q16.16
-        int32_t const rawGamDegs = yawGamDegs.data >> 16;
-
-        // Proper positive modulo for 64-entry LUT (handles negative numbers correctly)
-        return static_cast<size_t>((rawGamDegs % 64 + 64) % 64);
-    }
 
 
     [[nodiscard]] auto castRayField(
@@ -195,6 +165,8 @@ private:
         ) -> std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS>
     {
         std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS> rayField;
+
+        //ffm::fixed32 ggg{.data = 1024};
 
         int const levelLength = static_cast<int>(level->getLength());
         constexpr int LEVEL_WIDTH = static_cast<int>(ILevel::LEVEL_WIDTH);

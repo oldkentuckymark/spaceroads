@@ -8,9 +8,9 @@
 namespace ffm
 {
 
-constexpr uint32_t INVZ_STEPS = 8;
-constexpr uint32_t INVZ_MAX = 256;
-constexpr size_t   INVZ_N     = INVZ_STEPS * (INVZ_MAX + 1);
+constexpr uint32_t INVDIV_STEPS = 4;
+constexpr uint32_t INVDIV_MAX = 320;
+constexpr size_t   INVDIV_N     = INVDIV_STEPS * (INVDIV_MAX + 1);
 
 class fixed16
 {
@@ -117,6 +117,31 @@ public:
         return (*this);
     }
 
+    constexpr auto operator<<(int32_t const that) -> fixed32&
+    {
+        data = (data << that);
+        return (*this);
+    }
+
+    constexpr auto operator>>(int32_t const that) -> fixed32&
+    {
+        data = (data >> that);
+        return (*this);
+    }
+
+    constexpr auto operator<<(fixed32 const that) -> fixed32&
+    {
+        data = (data << that.data);
+        return (*this);
+    }
+
+    constexpr auto operator>>(fixed32 const that) -> fixed32&
+    {
+        data = (data >> that.data);
+        return (*this);
+    }
+
+
      constexpr explicit operator int8_t() const { return data >> FIX_SHIFT; }
 
      constexpr operator int16_t() const { return data >> FIX_SHIFT; }
@@ -153,7 +178,7 @@ public:
         return r;
     }
 
-     constexpr auto operator|(fixed32 const that) const -> fixed32
+     constexpr auto operator/(fixed32 const that) const -> fixed32
     {
         fixed32 r;
         r.data = (int64_t(data) * FIX_SCALE) / (that.data);
@@ -192,15 +217,22 @@ public:
         return this->data >= that.data;
     }
 
-private:
-    consteval static auto makeinvzTable() -> std::array<fixed32, INVZ_N>
+    constexpr static auto fromRaw(int32_t const val) -> fixed32
     {
-        std::array<fixed32, INVZ_N> r;
-        double s = 1.0 / INVZ_STEPS;
+        fixed32 r;
+        r.data = val;
+        return r;
+    }
+
+private:
+    consteval static auto makeinvDivTable() -> std::array<fixed32, INVDIV_N>
+    {
+        std::array<fixed32, INVDIV_N> r;
+        double s = 1.0 / INVDIV_STEPS;
         double x = 0.0;
 
         x = x + s;
-        for (auto i = 1ul; i < INVZ_N; ++i)
+        for (auto i = 1ul; i < INVDIV_N; ++i)
         {
             r[i] = fixed32(1.0 / x);
             x = x + s;
@@ -209,9 +241,9 @@ private:
         return r;
     }
 
-     [[nodiscard]] constexpr static auto invZ(fixed32 const z) -> fixed32
+     [[nodiscard]] constexpr static auto invDiv(fixed32 const z) -> fixed32
     {
-        constexpr static std::array<fixed32, INVZ_N> invzlut{makeinvzTable()};
+        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeinvDivTable()};
 
         constexpr auto log2Pow2 = [](uint32_t v) consteval -> int32_t
         {
@@ -220,7 +252,7 @@ private:
             return r;
         };
 
-        constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVZ_STEPS);
+        constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVDIV_STEPS);
 
         fixed32 v = z;
         if(z.data < 0) { v.data = -v.data;}
@@ -234,10 +266,10 @@ private:
 
 public:
 
-    constexpr auto operator/(fixed32 const &that) const -> fixed32
+    constexpr auto operator|(fixed32 const &that) const -> fixed32
     {
         fixed32 r;
-        r = (*this) * invZ(that);
+        r = (*this) * invDiv(that);
         return r;
     }
 

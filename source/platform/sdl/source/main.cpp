@@ -153,6 +153,16 @@ private:
 
 auto main() -> int
 {
+
+    ffm::fixed32 a{1};
+    ffm::fixed32 b{1};
+    ffm::fixed32 c = a + b;
+
+    ffm::fixed32 x(1.0_fx);
+    ffm::fixed32 y(1.0_fx);
+    ffm::fixed32 z = x + y;
+
+
     constexpr ffm::fixed32 dt = ffm::fixed32(1.0/60.0);
     auto const * const lp = &level0;
 

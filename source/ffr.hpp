@@ -599,7 +599,7 @@ protected:
 
             if (currentIn != nextIn)
             {
-                const fixed32 t = (near_z_ - current.z) / (next.z - current.z);
+                const fixed32 t = (near_z_ - current.z) | (next.z - current.z);
                 clipped.emplace_back( current.x + (next.x - current.x) * t, current.y + (next.y - current.y) * t, current.z + (next.z - current.z) * t );
             }
         }
@@ -636,8 +636,8 @@ protected:
         p.x = p.x * aspect_ratio_;
         //p.x = p.x / p.z;
         //p.y = p.y / p.z;
-        p.x = p.x / p.z;
-        p.y = p.y / p.z;
+        p.x = p.x | p.z;
+        p.y = p.y | p.z;
     }
 
      [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
