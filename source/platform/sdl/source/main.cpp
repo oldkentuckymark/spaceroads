@@ -49,52 +49,41 @@ public:
         rz.y = ry.x * msz + ry.y * mcz;
         rz.z = ry.z;
 
-        // Translate to Camera Relative Position
+        // Translate to Camera Relative Position in World Space
         vec3 worldPos = rz + modelPos - camPos;
 
         // ==========================================
         // 2. CAMERA VIEW TRANSFORMATION (World Space -> View Space)
-        // Inverse Angles: cos(-a) = cos(a), sin(-a) = -sin(a)
-        // Reverse Order: Z -> Y -> X
+        // Strict Order: Pitch (X) -> Yaw (Y). Roll (Z) is strictly omitted.
         // ==========================================
-        fixed32 const ccx = cosgd(camRot.x);
-        fixed32 const csx = singd(camRot.x);
+        fixed32 const ccx = cosgd(camRot.x); // Pitch cos
+        fixed32 const csx = singd(camRot.x); // Pitch sin
 
-        fixed32 const ccy = cosgd(camRot.y);
-        fixed32 const csy = singd(camRot.y);
+        fixed32 const ccy = cosgd(camRot.y); // Yaw cos
+        fixed32 const csy = singd(camRot.y); // Yaw sin
 
-        fixed32 const ccz = cosgd(camRot.z);
-        fixed32 const csz = singd(camRot.z);
-
-        // --- Camera Inverse Rotate Z (-camRot.z) ---
-        vec3 crz;
-        crz.x =  worldPos.x * ccz + worldPos.y * csz;
-        crz.y = -worldPos.x * csz + worldPos.y * ccz;
-        crz.z =  worldPos.z;
-
-        // --- Camera Inverse Rotate Y (-camRot.y) ---
-        vec3 cry;
-        cry.x =  crz.x * ccy - crz.z * csy;
-        cry.y =  crz.y;
-        cry.z =  crz.x * csy + crz.z * ccy;
-
-        // --- Camera Inverse Rotate X (-camRot.x) ---
+        // --- Step 1: Camera Inverse Pitch (-camRot.x) ---
         vec3 crx;
-        crx.x =  cry.x;
-        crx.y =  cry.y * ccx + cry.z * csx;
-        crx.z = -cry.y * csx + cry.z * ccx;
+        crx.x = worldPos.x;
+        crx.y = worldPos.y * ccx + worldPos.z * csx;
+        crx.z = -worldPos.y * csx + worldPos.z * ccx;
+
+        // --- Step 2: Camera Inverse Yaw (-camRot.y) ---
+        // Matches standard CCW Cartesian table convention (X = cos, Z = sin)
+        vec3 cry;
+        cry.x =  crx.x * ccy + crx.z * csy;
+        cry.y =  crx.y;
+        cry.z = -crx.x * csy + crx.z * ccy;
 
         // Output final View Space vertex
-        in = crx;
-        //camRot.y = camRot.y + 0.0001_fx;
+        in = cry;
     }
 
     ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};
-    ffm::vec3 camRot{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::vec3 camRot{0.0_fx, 0.0_fx, 0.0_fx}; // x = pitch, y = yaw (z is ignored)
     ffm::vec3 modelPos{0.0_fx, 0.0_fx, 0.0_fx};
     ffm::vec3 modelRotation{0.0_fx, 0.0_fx, 0.0_fx};
 };
-
 
 class Context final : public ffr::BaseContext<Context,VertexFunction>
 {
@@ -239,13 +228,13 @@ auto main() -> int
         {
             inputs[8] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.001;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.0001_fx;
         }
         if (keys[SDL_SCANCODE_A])
         {
             inputs[9] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.001;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.0001_fx;
         }
         }
 

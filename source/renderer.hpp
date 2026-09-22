@@ -103,7 +103,7 @@ private:
     Player* current_player_{nullptr};
     std::span<Vertex const> current_ship_mesh_{};
 
-    constexpr static uint32_t NUM_RAYS{19};
+    constexpr static uint32_t NUM_RAYS{17};
     constexpr static uint32_t MAX_DEDUP_BLOCKS = NUM_RAYS * DRAW_DISTANCE;
 
     using VisitedCell = std::tuple<int16_t, int16_t, ffm::fixed32>;
@@ -115,18 +115,16 @@ private:
     {
         std::array<ffm::vec2, N> r{};
         constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
-        // Half-step offset keeps angles away from exact cardinal axes (0, 90, 180, 270 deg)
-        constexpr double offset = step * 0.001;
+        constexpr double offset = step * 0.001; // Half-step offset avoids 0 and infinities
 
         for (size_t i = 0; i < N; ++i)
         {
             double const theta = (step * static_cast<double>(i)) + offset;
 
-            // Standard Cartesian convention (CCW rotation):
-            // X = cos(theta), Z = sin(theta)
+            // Standard Math: X = cos(theta), Z = sin(theta) (CCW)
             r[i] = ffm::vec2(
-                ffm::fixed32(std::cos(theta)), // Always non-zero!
-                ffm::fixed32(std::sin(theta))  // Always non-zero!
+                ffm::fixed32(std::sin(theta)),
+                ffm::fixed32(std::cos(theta))
                 );
         }
         return r;
@@ -139,13 +137,18 @@ private:
         constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(N);
         constexpr double offset = step * 0.001;
 
+        constexpr double MAX_SAFE_INV = 30000.0;
+
         for (size_t i = 0; i < N; ++i)
         {
             double const theta = (step * static_cast<double>(i)) + offset;
-            double const dx = std::cos(theta); // X = cos
-            double const dz = std::sin(theta); // Z = sin
+            double const dx = std::sin(theta);
+            double const dz = std::cos(theta);
 
-            // Division by zero impossible due to the half-step offset
+            // Clamp inverse values to prevent Q16.16 overflow near 0
+            double const invDx = std::clamp(1.0 / dx, -MAX_SAFE_INV, MAX_SAFE_INV);
+            double const invDz = std::clamp(1.0 / dz, -MAX_SAFE_INV, MAX_SAFE_INV);
+
             r[i] = ffm::vec2(
                 ffm::fixed32(1.0 / dx),
                 ffm::fixed32(1.0 / dz)
@@ -153,24 +156,24 @@ private:
         }
         return r;
     }
+
     auto static constexpr dxDyTable = makedXdYTable();
     auto static constexpr invDxDyTable = makeInvdXdYTable();
 
     template<size_t N = 64>
-    static constexpr auto getdXdYfromYaw(ffm::fixed32 const yawGamDegs) -> ffm::vec2
+    static constexpr auto getdXdYfromYaw(ffm::fixed32 yawGamDegs) -> ffm::vec2
     {
         static constexpr auto dXdYTable = makedXdYTable<N>();
-
         // Direct power-of-two bitmask indexing for efficient lookup
         size_t index = static_cast<size_t>(yawGamDegs) & (N - 1);
         return dXdYTable[index];
     }
 
+
     template<size_t N = 64>
-    static constexpr auto getInvdXdYfromYaw(ffm::fixed32 const yawGamDegs) -> ffm::vec2
+    static constexpr auto getInvdXdYfromYaw(ffm::fixed32 yawGamDegs) -> ffm::vec2
     {
         static constexpr auto invdXdYTable = makeInvdXdYTable<N>();
-
         size_t index = static_cast<size_t>(yawGamDegs) & (N - 1);
         return invdXdYTable[index];
     }
@@ -218,54 +221,60 @@ private:
         uint32_t const rawFracX = posMod(camX, CELL_SIZE_X);
         uint32_t const rawFracZ = posMod(camZ, CELL_SIZE_Z);
 
-        ffm::fixed32 const halfFov = ffm::fixed32(8); // 45 degrees
-        ffm::fixed32 const startAngle = yawInGamDegs + halfFov;
+        // Normalize input yaw to a safe positive Q16.16 range [0, 256 << 16)
+        constexpr int32_t FULL_CIRCLE_RAW = 256 << 16;
+        int32_t normalizedYaw = yawInGamDegs.data % FULL_CIRCLE_RAW;
+        if (normalizedYaw < 0) normalizedYaw += FULL_CIRCLE_RAW;
 
-        ffm::fixed32 const fovStep = (NUM_RAYS > 1)
-                                         ? (ffm::fixed32(16) / ffm::fixed32(static_cast<int16_t>(NUM_RAYS - 1)))
-                                         : ffm::fixed32(0);
+        // 90-degree FOV span = 64 GamDegs out of 256 (Half-span = 32 in Q16.16)
+        constexpr int32_t HALF_FOV_RAW = 32 << 16;
+        int32_t const leftAngleRaw = normalizedYaw - HALF_FOV_RAW;
+
+        int32_t const fovStepRaw = (NUM_RAYS > 1)
+                                       ? ((64 << 16) / static_cast<int32_t>(NUM_RAYS - 1))
+                                       : 0;
 
         for (uint32_t rayIdx = 0; rayIdx < NUM_RAYS; ++rayIdx)
         {
             auto& encounteredBlocks = rayField[rayIdx];
 
-            ffm::fixed32 const rayAngle = startAngle - (fovStep * ffm::fixed32(static_cast<int16_t>(rayIdx)));
+            int32_t rayAngleRaw = leftAngleRaw + (fovStepRaw * static_cast<int32_t>(rayIdx));
+            rayAngleRaw %= FULL_CIRCLE_RAW;
+            if (rayAngleRaw < 0) rayAngleRaw += FULL_CIRCLE_RAW;
 
-            // Offset +16 GamDegs so 0 deg yaw faces Forward (+Z)
-            int32_t const rawGamDegs = (rayAngle.data >> 16) + 16;
-            size_t const angleIdx = static_cast<size_t>((rawGamDegs % 64 + 64) % 64);
+            int32_t const rawGamDegs = rayAngleRaw >> 16;
+            size_t const angleIdx = static_cast<size_t>((rawGamDegs >> 2) % 64);
 
             ffm::vec2 const dir = dxDyTable[angleIdx];
             ffm::vec2 const invDir = invDxDyTable[angleIdx];
 
-            ffm::fixed32 deltaDistX;
-            ffm::fixed32 deltaDistZ;
-            deltaDistX.data = std::abs(invDir.x.data);
-            deltaDistZ.data = std::abs(invDir.y.data) << 1;
+            // Fixed-point delta distances (scaled for anisotropic CELL_SIZE_Z = 2x CELL_SIZE_X)
+            int64_t const fixedDeltaX = static_cast<int64_t>(std::abs(invDir.x.data));
+            int64_t const fixedDeltaZ = static_cast<int64_t>(std::abs(invDir.y.data)) * 2;
 
             int stepX = 0;
             int stepZ = 0;
-            ffm::fixed32 sideDistX;
-            ffm::fixed32 sideDistZ;
+            int64_t sideDistX = 0;
+            int64_t sideDistZ = 0;
 
             if (dir.x.data < 0) {
                 stepX = -1;
                 uint32_t const distToBoundary = rawFracX;
-                sideDistX.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistX.data >> 8)) >> 8);
+                sideDistX = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaX)) >> 16;
             } else {
                 stepX = 1;
                 uint32_t const distToBoundary = CELL_SIZE_X - rawFracX;
-                sideDistX.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistX.data >> 8)) >> 8);
+                sideDistX = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaX)) >> 16;
             }
 
             if (dir.y.data < 0) {
                 stepZ = -1;
                 uint32_t const distToBoundary = rawFracZ;
-                sideDistZ.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistZ.data >> 8)) >> 9);
+                sideDistZ = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaZ)) >> 16;
             } else {
                 stepZ = 1;
                 uint32_t const distToBoundary = CELL_SIZE_Z - rawFracZ;
-                sideDistZ.data = static_cast<int32_t>((distToBoundary * static_cast<uint32_t>(deltaDistZ.data >> 8)) >> 9);
+                sideDistZ = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaZ)) >> 16;
             }
 
             int mapX = baseMapX;
@@ -294,23 +303,20 @@ private:
                 }
             };
 
-            // 1. Inspect initial camera cell
             inspectCell(mapX, mapZ);
 
-            // 2. DDA Step Loop: Bounded strictly by DRAW_DISTANCE visited cells
             for (uint32_t step = 0; step < DRAW_DISTANCE; ++step)
             {
-                if (sideDistX.data < sideDistZ.data) {
-                    sideDistX.data += deltaDistX.data;
+                // Use 64-bit comparison and accumulation to prevent int32 overflow near cardinal axes
+                if (sideDistX < sideDistZ) {
+                    sideDistX += fixedDeltaX;
                     mapX += stepX;
                 } else {
-                    sideDistZ.data += deltaDistZ.data;
+                    sideDistZ += fixedDeltaZ;
                     mapZ += stepZ;
                 }
 
-                // Direction-aware world boundary exit check
-                if ((stepX < 0 && mapX < 0) || (stepX > 0 && mapX >= LEVEL_WIDTH) ||
-                    (stepZ < 0 && mapZ < 0) || (stepZ > 0 && mapZ >= levelLength)) [[unlikely]] {
+                if (mapX < -1 || mapX > LEVEL_WIDTH + 1 || mapZ < -1 || mapZ > levelLength + 1) [[unlikely]] {
                     break;
                 }
 
