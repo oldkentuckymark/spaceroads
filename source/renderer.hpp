@@ -15,347 +15,267 @@ template <class Context>
 class Renderer
 {
 public:
+    Renderer() = default;
+    ~Renderer() = default;
 
-    constexpr static uint32_t DRAW_DISTANCE{10};
-
-    Renderer()
-    {
-
-
-    }
-
-    ~Renderer()
-    {
-
-    }
-
-    auto setPlayer(Player* p) -> void
-    {
-        current_player_ = p;
-    }
-
-    auto setPlayerMesh(std::span<Vertex const> m) -> void
-    {
-        current_ship_mesh_ = m;
-    }
-
-    auto setLevel(ILevel const * level) -> void
-    {
-        current_level_ = level;
-    }
+    auto setPlayer(Player* p) -> void { current_player_ = p; }
+    auto setPlayerMesh(std::span<Vertex const> m) -> void { current_ship_mesh_ = m; }
+    auto setLevel(ILevel const* level) -> void { current_level_ = level; }
 
     auto draw() -> void
     {
+        if (!current_level_ || !current_player_) return;
 
         ctx.setFaceCulling(ffr::FaceCullMode::Back);
         ctx.clear();
+
         auto& campos = ctx.getVertexFunction().camPos;
         auto& camyaw = ctx.getVertexFunction().camRot.y;
-        campos = current_player_->position + ffm::vec3{0.0_fx,2.0_fx,-2.8_fx};
+        campos = current_player_->position + ffm::vec3{0.0_fx, 2.0_fx, -2.8_fx};
 
-        int16_t const pz = static_cast<int16_t>(current_player_->position.z) / 2;
-        int16_t maxz = pz + DRAW_DISTANCE;
-        if(maxz >= current_level_->getLength()) { maxz = current_level_->getLength() - 1; }
-        int16_t minz = pz;
-        if(minz < 0) { minz = 0; }
-        int16_t px = current_player_->position.x;
-        if (px < 0) { px = 0; }
-        if (px > 8) { px = 8; }
+        // 1. Raycast & process grid blocks
+        auto rayField = castRayField(static_cast<float>(campos.x),
+                                     static_cast<float>(campos.y),
+                                     static_cast<float>(campos.z),
+                                     static_cast<float>(camyaw),
+                                     current_level_);
 
+        auto sortedHits = processRayField(rayField);
 
-        auto rf = castRayField({campos.x,campos.z}, camyaw, current_level_);
-        auto cl = getVisibleMeshesBackToFront(rf);
-
-        for(VisitedMeshCell const& vmc : cl)
+        // 2. Render visible level blocks (Furthest -> Closest)
+        for (RayHit const& bh : sortedHits)
         {
-            auto w = std::get<0>(vmc);
-            auto l = std::get<1>(vmc);
+            auto w = bh.w;
+            auto l = bh.l;
+            auto const& cell = current_level_->getCell(w, l);
+            auto const* cp   = current_level_->getCellColorBufferPtr(w, l);
 
-            auto const cell = current_level_->getCell(w,l);
-            auto const colptr = current_level_->getCellColorBufferPtr(w,l);
+            ctx.getVertexFunction().modelPos = ffm::vec3(
+                ffm::fixed32(static_cast<int16_t>(w)),
+                0.0_fx,
+                ffm::fixed32(static_cast<int16_t>(l * 2)) // Cell length = 2.0
+                );
 
-            ctx.getVertexFunction().modelPos = ffm::vec3{ffm::fixed32(w),0.0_fx,ffm::fixed32(l*2)};
-            ctx.setColorPointer(0,colptr);
-            ctx.setVertexPointer(3,sizeof(Vertex), Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].data());
-            ctx.drawArray(ffr::DrawType::Quads, 0, Mesh::CELL_MESHES[ static_cast<size_t>(cell.collision) ].size());
-
+            ctx.setColorPointer(0, cp);
+            ctx.setVertexPointer(3, sizeof(Vertex), Mesh::CELL_MESHES[static_cast<size_t>(cell.collision)].data());
+            ctx.drawArray(ffr::DrawType::Quads, 0, Mesh::CELL_MESHES[static_cast<size_t>(cell.collision)].size());
         }
 
-
-
-
+        // 3. Render player ship
         ctx.getVertexFunction().modelPos = current_player_->position;
-        ctx.setColorPointer(sizeof(Vertex),&Mesh::SHIP_MESH[0].color);
-        ctx.setVertexPointer(3,sizeof(Vertex),&Mesh::SHIP_MESH[0].position);
-        ctx.drawArray(ffr::DrawType::Quads,0,Mesh::SHIP_MESH.size());
-
-
+        ctx.setColorPointer(sizeof(Vertex), &Mesh::SHIP_MESH[0].color);
+        ctx.setVertexPointer(3, sizeof(Vertex), &Mesh::SHIP_MESH[0].position);
+        ctx.drawArray(ffr::DrawType::Quads, 0, Mesh::SHIP_MESH.size());
 
         ctx.present();
     }
 
-        Context ctx;
+    Context ctx;
+
 private:
-
-
-    ILevel const * current_level_{nullptr};
-
+    ILevel const* current_level_{nullptr};
     Player* current_player_{nullptr};
     std::span<Vertex const> current_ship_mesh_{};
 
-    constexpr static uint32_t NUM_RAYS{17};
-    constexpr static uint32_t MAX_DEDUP_BLOCKS = NUM_RAYS * DRAW_DISTANCE;
+    constexpr static size_t DRAW_DISTANCE = 10;
+    constexpr static float GAMDEG_TO_RAD = (2.0f * std::numbers::pi_v<float>) / static_cast<float>(ffm::GAMDEG_IN_CIRCLE);
 
-    using VisitedCell = std::tuple<int16_t, int16_t, ffm::fixed32>;
-    using RayResult   = std::inplace_vector<VisitedCell, DRAW_DISTANCE>;
-    using VisitedMeshCell = std::tuple<int16_t, int16_t, ffm::fixed32>;
 
-    static consteval auto makedXdYTable() -> std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE>
+
+    // 90° FOV half-width
+    static constexpr int HALF_FOV_GAMDEG = static_cast<int>(ffm::GAMDEG_IN_CIRCLE / 8); // 32 for 256 GAMDEG
+
+    // Extra rays to cast past screen edges to prevent volumetric culling artifacts
+    static constexpr int EXTRA_SIDE_RAYS = 4;
+
+    // Sweep dimensions and capacities
+    static constexpr int HALF_SWEEP       = HALF_FOV_GAMDEG + EXTRA_SIDE_RAYS;            // 36
+    static constexpr size_t NUM_RAYS      = static_cast<size_t>(HALF_SWEEP * 2) + 1;    // 73
+    static constexpr size_t MAX_FIELD_HITS = NUM_RAYS * DRAW_DISTANCE;                   // 730
+
+
+    struct RayHit
     {
-        std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE> r{};
-        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(ffm::GAMDEG_IN_CIRCLE);
-        constexpr double offset = step * 0.1;
+        int16_t w;
+        int16_t l;
+        float distance;
+    };
 
-        for (size_t i = 0; i < ffm::GAMDEG_IN_CIRCLE; ++i)
-        {
-            double const theta = (step * static_cast<double>(i)) + offset;
+    using RaycastResult       = std::inplace_vector<RayHit, DRAW_DISTANCE>;
+    using RayFieldResult      = std::inplace_vector<RaycastResult, NUM_RAYS>;
+    using DeduplicatedRayHits = std::inplace_vector<RayHit, MAX_FIELD_HITS>;
 
-            r[i] = ffm::vec2(
-                ffm::fixed32(std::sin(theta)),
-                ffm::fixed32(std::cos(theta))
-                );
+    auto castRay(float camX, float camY, float camZ, float rayYawGamdeg, float offsetGamdeg, ILevel const* const level)
+        -> RaycastResult
+    {
+        RaycastResult hits;
+
+        if (!level) return hits;
+
+        const int16_t width  = static_cast<int16_t>(level->getWidth());
+        const int16_t length = static_cast<int16_t>(level->getLength());
+
+        if (width <= 0 || length <= 0) return hits;
+
+        constexpr float CELL_W = 1.0f;
+        constexpr float CELL_L = 2.0f;
+
+        const float worldWidth  = static_cast<float>(width) * CELL_W;
+        const float worldLength = static_cast<float>(length) * CELL_L;
+
+        const float rad  = rayYawGamdeg * GAMDEG_TO_RAD;
+        const float dirW = std::sin(rad); // +W (X axis)
+        const float dirL = std::cos(rad); // +L (Z axis)
+
+        // --- 1. Ray-AABB Intersection ---
+        float tMin = 0.0f;
+        float tMax = std::numeric_limits<float>::infinity();
+
+        if (dirW != 0.0f) {
+            float t1 = (0.0f - camX) / dirW;
+            float t2 = (worldWidth - camX) / dirW;
+            tMin = std::max(tMin, std::min(t1, t2));
+            tMax = std::min(tMax, std::max(t1, t2));
+        } else if (camX < 0.0f || camX >= worldWidth) {
+            return hits;
         }
-        return r;
-    }
 
-    static consteval auto makeInvdXdYTable() -> std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE>
-    {
-        std::array<ffm::vec2, ffm::GAMDEG_IN_CIRCLE> r{};
-        constexpr double step = (std::numbers::pi * 2.0) / static_cast<double>(ffm::GAMDEG_IN_CIRCLE);
-        constexpr double offset = step * 0.1;
-
-        constexpr double MAX_SAFE_INV = 30000.0;
-
-        for (size_t i = 0; i < ffm::GAMDEG_IN_CIRCLE; ++i)
-        {
-            double const theta = (step * static_cast<double>(i)) + offset;
-            double const dx = std::sin(theta);
-            double const dz = std::cos(theta);
-
-            // Clamp inverse values to prevent Q16.16 overflow near 0
-            double const invdx = std::clamp(1.0 / dx, -MAX_SAFE_INV, MAX_SAFE_INV);
-            double const invdz = std::clamp(1.0 / dz, -MAX_SAFE_INV, MAX_SAFE_INV);
-
-            r[i] = ffm::vec2(
-                ffm::fixed32(1.0 / invdx),
-                ffm::fixed32(1.0 / invdz)
-                );
+        if (dirL != 0.0f) {
+            float t1 = (0.0f - camZ) / dirL;
+            float t2 = (worldLength - camZ) / dirL;
+            tMin = std::max(tMin, std::min(t1, t2));
+            tMax = std::min(tMax, std::max(t1, t2));
+        } else if (camZ < 0.0f || camZ >= worldLength) {
+            return hits;
         }
-        return r;
-    }
 
-    auto static constexpr dxDyTable = makedXdYTable();
-    auto static constexpr invDxDyTable = makeInvdXdYTable();
+        if (tMin > tMax) return hits;
 
+        // --- 2. Max Depth Traversal Limit INSIDE Level ---
+        const float offsetRad     = offsetGamdeg * GAMDEG_TO_RAD;
+        const float maxLevelDepth = (static_cast<float>(DRAW_DISTANCE) / std::cos(offsetRad)) + 2.0f;
 
-    [[nodiscard]] auto castRayField(
-        ffm::vec2 const cameraPos,
-        ffm::fixed32 const yawInGamDegs,
-        ILevel const* level
-        ) -> std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS>
-    {
-        std::array<std::inplace_vector<VisitedCell, DRAW_DISTANCE>, NUM_RAYS> rayField;
+        // --- 3. Entry Point & Grid Cell Indexing ---
+        constexpr float epsilon = 1e-4f;
+        float rayStartX = camX + tMin * dirW;
+        float rayStartZ = camZ + tMin * dirL;
 
-        //ffm::fixed32 ggg{.data = 1024};
+        if (tMin > 0.0f) {
+            rayStartX += epsilon * dirW;
+            rayStartZ += epsilon * dirL;
+        }
 
-        int const levelLength = static_cast<int>(level->getLength());
-        constexpr int LEVEL_WIDTH = static_cast<int>(ILevel::LEVEL_WIDTH);
+        int16_t mapW = std::clamp<int16_t>(static_cast<int16_t>(std::floor(rayStartX / CELL_W)), 0, width - 1);
+        int16_t mapL = std::clamp<int16_t>(static_cast<int16_t>(std::floor(rayStartZ / CELL_L)), 0, length - 1);
 
-        constexpr int32_t CELL_SIZE_X = 65536;   // 1.0_fx
-        constexpr int32_t CELL_SIZE_Z = 131072;  // 2.0_fx
+        // --- 4. DDA Setup ---
+        const int16_t stepW = (dirW >= 0.0f) ? 1 : -1;
+        const int16_t stepL = (dirL >= 0.0f) ? 1 : -1;
 
-        auto const floorDiv = [](int32_t val, int32_t div) -> int {
-            if (val >= 0) return val / div;
-            return (val - div + 1) / div;
-        };
+        const float deltaDistW = (dirW == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(CELL_W / dirW);
+        const float deltaDistL = (dirL == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(CELL_L / dirL);
 
-        auto const posMod = [](int32_t val, int32_t div) -> uint32_t {
-            int32_t const r = val % div;
-            return static_cast<uint32_t>(r < 0 ? r + div : r);
-        };
+        const float nextBoundaryW = (dirW >= 0.0f) ? (static_cast<float>(mapW + 1) * CELL_W)
+                                                   : (static_cast<float>(mapW) * CELL_W);
+        const float nextBoundaryL = (dirL >= 0.0f) ? (static_cast<float>(mapL + 1) * CELL_L)
+                                                   : (static_cast<float>(mapL) * CELL_L);
 
-        int32_t const camX = static_cast<int32_t>(cameraPos.x.data);
-        int32_t const camZ = static_cast<int32_t>(cameraPos.y.data);
+        float sideDistW = tMin + ((dirW == 0.0f) ? std::numeric_limits<float>::infinity()
+                                                 : std::abs((nextBoundaryW - rayStartX) / dirW));
+        float sideDistL = tMin + ((dirL == 0.0f) ? std::numeric_limits<float>::infinity()
+                                                 : std::abs((nextBoundaryL - rayStartZ) / dirL));
 
-        int const baseMapX = floorDiv(camX, CELL_SIZE_X);
-        int const baseMapZ = floorDiv(camZ, CELL_SIZE_Z);
+        float currentDist = tMin;
 
-        uint32_t const rawFracX = posMod(camX, CELL_SIZE_X);
-        uint32_t const rawFracZ = posMod(camZ, CELL_SIZE_Z);
+        // --- 5. Grid Traversal ---
+        constexpr size_t MAX_SAFETY_STEPS = 128;
 
-        // Normalize input yaw to a safe positive Q16.16 range [0, 256 << 16)
-        constexpr int32_t FULL_CIRCLE_RAW = 256 << 16;
-        int32_t normalizedYaw = yawInGamDegs.data % FULL_CIRCLE_RAW;
-        if (normalizedYaw < 0) normalizedYaw += FULL_CIRCLE_RAW;
-
-        // 90-degree FOV span = 64 GamDegs out of 256 (Half-span = 32 in Q16.16)
-        constexpr int32_t HALF_FOV_RAW = 32 << 16;
-        int32_t const leftAngleRaw = normalizedYaw - HALF_FOV_RAW;
-
-        int32_t const fovStepRaw = (NUM_RAYS > 1)
-                                       ? ((64 << 16) / static_cast<int32_t>(NUM_RAYS - 1))
-                                       : 0;
-
-        for (uint32_t rayIdx = 0; rayIdx < NUM_RAYS; ++rayIdx)
+        for (size_t step = 0; step < MAX_SAFETY_STEPS; ++step)
         {
-            auto& encounteredBlocks = rayField[rayIdx];
-
-            int32_t rayAngleRaw = leftAngleRaw + (fovStepRaw * static_cast<int32_t>(rayIdx));
-            rayAngleRaw %= FULL_CIRCLE_RAW;
-            if (rayAngleRaw < 0) rayAngleRaw += FULL_CIRCLE_RAW;
-
-            int32_t const rawGamDegs = rayAngleRaw >> 16;
-            size_t const angleIdx = static_cast<size_t>((rawGamDegs >> 2) % 64);
-
-            ffm::vec2 const dir = dxDyTable[angleIdx];
-            ffm::vec2 const invDir = invDxDyTable[angleIdx];
-
-            // Fixed-point delta distances (scaled for anisotropic CELL_SIZE_Z = 2x CELL_SIZE_X)
-            int64_t const fixedDeltaX = static_cast<int64_t>(std::abs(invDir.x.data));
-            int64_t const fixedDeltaZ = static_cast<int64_t>(std::abs(invDir.y.data)) * 2;
-
-            int stepX = 0;
-            int stepZ = 0;
-            int64_t sideDistX = 0;
-            int64_t sideDistZ = 0;
-
-            if (dir.x.data < 0) {
-                stepX = -1;
-                uint32_t const distToBoundary = rawFracX;
-                sideDistX = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaX)) >> 16;
-            } else {
-                stepX = 1;
-                uint32_t const distToBoundary = CELL_SIZE_X - rawFracX;
-                sideDistX = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaX)) >> 16;
+            const float depthInsideLevel = currentDist - tMin;
+            if (currentDist > tMax || depthInsideLevel > maxLevelDepth) {
+                break;
             }
 
-            if (dir.y.data < 0) {
-                stepZ = -1;
-                uint32_t const distToBoundary = rawFracZ;
-                sideDistZ = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaZ)) >> 16;
-            } else {
-                stepZ = 1;
-                uint32_t const distToBoundary = CELL_SIZE_Z - rawFracZ;
-                sideDistZ = (static_cast<uint64_t>(distToBoundary) * static_cast<uint64_t>(fixedDeltaZ)) >> 16;
+            if (mapW < 0 || mapW >= width || mapL < 0 || mapL >= length) {
+                break;
             }
 
-            int mapX = baseMapX;
-            int mapZ = baseMapZ;
-
-            auto const inspectCell = [&](int x, int z) {
-                if (x >= 0 && x < LEVEL_WIDTH && z >= 0 && z < levelLength) {
-                    if (level->getCell(x, z).collision != Cell::Collision::Empty) {
-                        if (encounteredBlocks.size() < DRAW_DISTANCE) {
-                            ffm::fixed32 blockWorldX;
-                            ffm::fixed32 blockWorldZ;
-
-                            blockWorldX.data = (x * CELL_SIZE_X) + (CELL_SIZE_X / 2);
-                            blockWorldZ.data = (z * CELL_SIZE_Z) + (CELL_SIZE_Z / 2);
-
-                            ffm::fixed32 const dx = blockWorldX - cameraPos.x;
-                            ffm::fixed32 const dz = blockWorldZ - cameraPos.y;
-
-                            encounteredBlocks.emplace_back(
-                                static_cast<int16_t>(x),
-                                static_cast<int16_t>(z),
-                                (dx * dx) + (dz * dz)
-                                );
-                        }
-                    }
-                }
-            };
-
-            inspectCell(mapX, mapZ);
-
-            for (uint32_t step = 0; step < DRAW_DISTANCE; ++step)
+            if (auto const& cell = level->getCell(mapW, mapL); cell.collision != Cell::Collision::Empty)
             {
-                // Use 64-bit comparison and accumulation to prevent int32 overflow near cardinal axes
-                if (sideDistX < sideDistZ) {
-                    sideDistX += fixedDeltaX;
-                    mapX += stepX;
-                } else {
-                    sideDistZ += fixedDeltaZ;
-                    mapZ += stepZ;
+                if (hits.size() < DRAW_DISTANCE) {
+                    hits.push_back(RayHit{
+                        .w = mapW,
+                        .l = mapL,
+                        .distance = currentDist
+                    });
                 }
 
-                if (mapX < -1 || mapX > LEVEL_WIDTH + 1 || mapZ < -1 || mapZ > levelLength + 1) [[unlikely]] {
+                if (hits.size() == DRAW_DISTANCE) {
                     break;
                 }
+            }
 
-                inspectCell(mapX, mapZ);
+            if (sideDistW < sideDistL) {
+                currentDist = sideDistW;
+                sideDistW += deltaDistW;
+                mapW += stepW;
+            } else {
+                currentDist = sideDistL;
+                sideDistL += deltaDistL;
+                mapL += stepL;
             }
         }
 
-        return rayField;
+        return hits;
     }
 
-    [[nodiscard]] auto getVisibleMeshesBackToFront(
-        std::array<RayResult, NUM_RAYS> const& rayField
-        ) -> std::inplace_vector<VisitedMeshCell, MAX_DEDUP_BLOCKS>
+    auto castRayField(float camX, float camY, float camZ, float yawGamdeg, ILevel const* const level)
+        -> RayFieldResult
     {
-        std::inplace_vector<VisitedMeshCell, MAX_DEDUP_BLOCKS> visibleMeshes;
+        RayFieldResult field;
 
-        for (auto const& ray : rayField)
+        for (int i = -HALF_SWEEP; i <= HALF_SWEEP; ++i)
         {
-            for (auto const& [gridX, gridZ, distSq] : ray)
-            {
-                int32_t const newDist = distSq.data;
+            const float offsetGamdeg = static_cast<float>(i);
+            const float rayYaw       = yawGamdeg + offsetGamdeg;
 
-                // 1. Deduplication Check
-                // Scan existing entries to see if this grid cell was already added
-                bool alreadyExists = false;
-                for (size_t i = 0; i < visibleMeshes.size(); ++i)
-                {
-                    auto& [x, z, d] = visibleMeshes[i];
-                    if (x == gridX && z == gridZ)
-                    {
-                        alreadyExists = true;
-                        // If this ray found a closer distance to the block, update its distance metric
-                        if (newDist < d.data)
-                        {
-                            d.data = newDist;
+            field.push_back(castRay(camX, camY, camZ, rayYaw, offsetGamdeg, level));
+        }
 
-                            // Re-sort in-place: bubble forward if the updated distance is now smaller
-                            size_t curr = i;
-                            while (curr + 1 < visibleMeshes.size() &&
-                                   std::get<2>(visibleMeshes[curr]).data < std::get<2>(visibleMeshes[curr + 1]).data)
-                            {
-                                std::swap(visibleMeshes[curr], visibleMeshes[curr + 1]);
-                                ++curr;
-                            }
-                        }
-                        break;
-                    }
-                }
+        return field;
+    }
 
-                if (alreadyExists) continue;
+    auto processRayField(RayFieldResult const& field) -> DeduplicatedRayHits
+    {
+        DeduplicatedRayHits flatHits;
 
-                // 2. Ordered Insertion (Back-to-Front / Descending Distance)
-                // Find insertion index: keep array sorted descending by distSq.data
-                size_t insertPos = visibleMeshes.size();
-                while (insertPos > 0 && std::get<2>(visibleMeshes[insertPos - 1]).data < newDist)
-                {
-                    --insertPos;
-                }
-
-                // Insert element into correct sorted position directly
-                visibleMeshes.insert(visibleMeshes.begin() + insertPos, VisitedMeshCell{gridX, gridZ, distSq});
+        for (auto const& ray : field) {
+            for (auto const& hit : ray) {
+                flatHits.push_back(hit);
             }
         }
 
-        return visibleMeshes;
-    }
+        // Sort primary by (w, l) and secondary by distance ascending
+        std::sort(flatHits.begin(), flatHits.end(), [](RayHit const& a, RayHit const& b) {
+            if (a.w != b.w) return a.w < b.w;
+            if (a.l != b.l) return a.l < b.l;
+            return a.distance < b.distance;
+        });
 
+        // Deduplicate by cell coordinate
+        auto lastUnique = std::unique(flatHits.begin(), flatHits.end(), [](RayHit const& a, RayHit const& b) {
+            return a.w == b.w && a.l == b.l;
+        });
+        flatHits.erase(lastUnique, flatHits.end());
+
+        // Sort by distance descending (furthest -> closest)
+        std::sort(flatHits.begin(), flatHits.end(), [](RayHit const& a, RayHit const& b) {
+            return a.distance > b.distance;
+        });
+
+        return flatHits;
+    }
 };
 
 

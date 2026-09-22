@@ -251,7 +251,7 @@ public:
             fixed32 const invslopeTop = (fx1 - fx0) / (fy1 - fy0);
             for (int y = y0; y < y1; ++y)
             {
-                int16_t xx0 = xLong; int16_t yy0 = y; int16_t xx1 = xShort;
+                int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y; int16_t xx1 = static_cast<int16_t>(xShort);
                 auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
                 if(r == 0) {return;}
                 if(r == 1)
@@ -271,7 +271,7 @@ public:
             fixed32 const invslopeBottom = (fx2 - fx1) / (fy2 - fy1);
             for (int y = y1; y < y2; ++y)
             {
-                int16_t xx0 = xLong; int16_t yy0 = y; int16_t xx1 = xShort;
+                int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y; int16_t xx1 = static_cast<int16_t>(xShort);
                 util::order(xx0,xx1);
                 auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
                 if(r == 0) {return;}
@@ -284,7 +284,7 @@ public:
             }
         }
 
-        int16_t xx0 = xLong; int16_t yy0 = y2; int16_t xx1 = xShort;
+        int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y2; int16_t xx1 = static_cast<int16_t>(xShort);
         auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
         if(r == 1)
         {
@@ -453,7 +453,9 @@ public:
                         if(is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
                         {
                         to_screen_space(outVerts[k+0]);to_screen_space(outVerts[k+1]);to_screen_space(outVerts[k+2]);
-                        triangle(outVerts[k+0].x,outVerts[k+0].y,outVerts[k+1].x,outVerts[k+1].y,outVerts[k+2].x,outVerts[k+2].y,ccs);
+                        triangle(static_cast<int16_t>(outVerts[k+0].x),static_cast<int16_t>(outVerts[k+0].y),
+                                 static_cast<int16_t>(outVerts[k+1].x),static_cast<int16_t>(outVerts[k+1].y),
+                                 static_cast<int16_t>(outVerts[k+2].x),static_cast<int16_t>(outVerts[k+2].y),ccs);
                         }
                         }
                     }
@@ -484,7 +486,10 @@ public:
                         if(is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
                         {
                             to_screen_space(outVerts[k+0]);to_screen_space(outVerts[k+1]);to_screen_space(outVerts[k+2]);to_screen_space(outVerts[k+3]);
-                            quad(outVerts[k+0].x,outVerts[k+0].y,outVerts[k+1].x,outVerts[k+1].y,outVerts[k+2].x,outVerts[k+2].y,outVerts[k+3].x,outVerts[k+3].y,ccs);
+                            quad(static_cast<int16_t>(outVerts[k+0].x),static_cast<int16_t>(outVerts[k+0].y),
+                                 static_cast<int16_t>(outVerts[k+1].x),static_cast<int16_t>(outVerts[k+1].y),
+                                 static_cast<int16_t>(outVerts[k+2].x),static_cast<int16_t>(outVerts[k+2].y),
+                                 static_cast<int16_t>(outVerts[k+3].x),static_cast<int16_t>(outVerts[k+3].y),ccs);
                         }
                         }
 

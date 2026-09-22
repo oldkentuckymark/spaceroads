@@ -59,8 +59,8 @@ public:
         fixed32 const ccx = cosgd(camRot.x); // Pitch cos
         fixed32 const csx = singd(camRot.x); // Pitch sin
 
-        fixed32 const ccy = cosgd(camRot.y); // Yaw cos
-        fixed32 const csy = singd(camRot.y); // Yaw sin
+        fixed32 const ccy = cosgd(-camRot.y); // Yaw cos
+        fixed32 const csy = singd(-camRot.y); // Yaw sin
 
         // --- Step 1: Camera Inverse Pitch (-camRot.x) ---
         vec3 crx;
@@ -154,13 +154,6 @@ private:
 auto main() -> int
 {
 
-    ffm::fixed32 a{1};
-    ffm::fixed32 b{1};
-    ffm::fixed32 c = a + b;
-
-    ffm::fixed32 x(1.0_fx);
-    ffm::fixed32 y(1.0_fx);
-    ffm::fixed32 z = x + y;
 
 
     constexpr ffm::fixed32 dt = ffm::fixed32(1.0/60.0);
@@ -183,6 +176,9 @@ auto main() -> int
     while (running)
     {
         std::array<bool,10> inputs{};
+        c2 = std::chrono::steady_clock::now();
+        if(std::chrono::duration_cast<std::chrono::milliseconds>( c2.time_since_epoch()-c1.time_since_epoch()).count() >= 16)
+        {
         SDL_Event e;
         while (SDL_PollEvent(&e))
         {
@@ -238,20 +234,18 @@ auto main() -> int
         {
             inputs[8] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.0001_fx;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.1_fx;
         }
         if (keys[SDL_SCANCODE_A])
         {
             inputs[9] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.0001_fx;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.1_fx;
         }
         }
 
 
-        c2 = std::chrono::steady_clock::now();
-        if(std::chrono::duration_cast<std::chrono::milliseconds>( c2.time_since_epoch()-c1.time_since_epoch()).count() >= 16)
-        {
+
 
             game.processInputs(inputs);
             game.update(dt);

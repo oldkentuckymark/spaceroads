@@ -9,8 +9,53 @@ namespace ffm
 {
 
 constexpr uint32_t INVDIV_STEPS = 4;
-constexpr uint32_t INVDIV_MAX = 320;
+constexpr uint32_t INVDIV_MAX = 512;
 constexpr size_t   INVDIV_N     = INVDIV_STEPS * (INVDIV_MAX + 1);
+
+
+constexpr auto log2Pow2(uint32_t v) -> int32_t
+{
+    int32_t r = 0;
+    while (v >>= 1) ++r;
+    return r;
+};
+
+[[nodiscard]] constexpr auto factorial(auto const n) -> decltype(n)
+{
+    decltype(n) r = 1;
+    for (decltype(n) i = n; i > 1; --i)
+    {
+        r = r * i;
+    }
+    return r;
+}
+
+[[nodiscard]] constexpr auto pow(auto const b, auto const e) -> decltype(b)
+{
+    decltype(b) r = 1;
+    for (decltype(b) i = 0; i < e; ++i) {
+        r *= b;
+    }
+    return r;
+}
+
+[[nodiscard]] constexpr auto mix(auto x, decltype(x) y, decltype(x) a) -> auto
+{
+    return x * (decltype(x)(1) - a) + y * a;
+}
+
+[[nodiscard]] constexpr auto min(auto x, auto y) -> auto
+{
+    if(x < y) {return x;}
+    return y;
+}
+
+[[nodiscard]] constexpr auto max(auto x, auto y) -> auto
+{
+    if(x > y) {return x;}
+    return y;
+}
+
 
 class fixed16
 {
@@ -144,11 +189,15 @@ public:
 
      constexpr explicit operator int8_t() const { return data >> FIX_SHIFT; }
 
-     constexpr operator int16_t() const { return data >> FIX_SHIFT; }
+     constexpr explicit operator uint8_t() const { return static_cast<uint8_t>(data >> FIX_SHIFT); }
+
+     constexpr explicit operator int16_t() const { return data >> FIX_SHIFT; }
 
      constexpr explicit operator int32_t() const { return data >> FIX_SHIFT; }
 
      consteval explicit operator double() const { return data / FIX_SCALEF; }
+
+     explicit operator float() const { return data / FIX_SCALEF; }
 
      constexpr explicit operator fixed16() const
     {
@@ -224,8 +273,14 @@ public:
         return r;
     }
 
+    constexpr static auto floor_fixed(fixed32 v) -> int16_t
+    {
+        return static_cast<int16_t>(v.data >> FIX_SHIFT);
+    }
+
+
 private:
-    consteval static auto makeinvDivTable() -> std::array<fixed32, INVDIV_N>
+    consteval static auto makeInvDivTable() -> std::array<fixed32, INVDIV_N>
     {
         std::array<fixed32, INVDIV_N> r;
         double s = 1.0 / INVDIV_STEPS;
@@ -243,14 +298,9 @@ private:
 
      [[nodiscard]] constexpr static auto invDiv(fixed32 const z) -> fixed32
     {
-        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeinvDivTable()};
+        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeInvDivTable()};
 
-        constexpr auto log2Pow2 = [](uint32_t v) consteval -> int32_t
-        {
-            int32_t r = 0;
-            while (v >>= 1) ++r;
-            return r;
-        };
+
 
         constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVDIV_STEPS);
 
@@ -262,6 +312,18 @@ private:
         fixed32 r = invzlut[idx];
         if(z.data < 0) {r.data = -r.data;}
         return r;
+    }
+
+    [[nodiscard]] constexpr static auto invDivUnsafe(fixed32 const z) -> fixed32
+    {
+        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeInvDivTable()};
+        constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVDIV_STEPS); // 14
+
+        // Preconditions:
+        // 1. z.data > 0
+        // 2. z.data <= 0x0200C000 (512.75 in fixed32)
+        auto const idx = static_cast<std::size_t>(z.data >> SHIFT);
+        return invzlut[idx];
     }
 
 public:
@@ -329,24 +391,6 @@ constexpr fixed32 RAD_TO_GAMDEG = fixed32(GAMDEG_IN_CIRCLE / TAUF);
 constexpr fixed32 GAMDEG_TO_RAD = static_cast<fixed32>(TAUF / GAMDEG_IN_CIRCLE);
 constexpr uint16_t QUADRANT_GAMDEG{GAMDEG_IN_CIRCLE / 4};
 
- [[nodiscard]] constexpr auto factorial(auto const n) -> decltype(n)
-{
-    decltype(n) r = 1;
-    for (decltype(n) i = n; i > 1; --i)
-    {
-        r = r * i;
-    }
-    return r;
-}
-
- [[nodiscard]] constexpr auto pow(auto const b, auto const e) -> decltype(b)
-{
-    decltype(b) r = 1;
-    for (decltype(b) i = 0; i < e; ++i) {
-        r *= b;
-    }
-    return r;
-}
 
 namespace
 {
@@ -401,16 +445,7 @@ consteval auto makeInvsqrtTable() -> LUT
     return r;
 }
 
-constexpr auto log2_pow2(size_t n) -> int16_t
-{
-    int16_t shift = 0;
-    while (n > 1)
-    {
-        n >>= 1;
-        ++shift;
-    }
-    return shift;
-}
+
 
 
 static constexpr LUT SINTABLE{makeSinTable()};
@@ -438,7 +473,7 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 [[nodiscard]] constexpr auto gamDegsToRadians(int16_t const a) -> fixed32
 {
-    constexpr int SHIFT = log2_pow2(GAMDEG_IN_CIRCLE);
+    constexpr int SHIFT = log2Pow2(GAMDEG_IN_CIRCLE);
 
     // Multiply int16_t 'a' directly by TAU's raw Q16.16 value.
     // Result is in Q16.16 format shifted UP by 16 bits relative to 'a'.
@@ -454,13 +489,13 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 [[nodiscard]] constexpr auto singd(fixed32 const a) -> fixed32
 {
-    uint16_t const raw = static_cast<uint16_t>(static_cast<int16_t>(a));
+    uint16_t const raw = static_cast<uint32_t>(static_cast<int32_t>(a));
     return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
 }
 
 [[nodiscard]] constexpr auto cosgd(fixed32 const a) -> fixed32
 {
-    uint16_t const raw = static_cast<uint16_t>(static_cast<int16_t>(a)) + QUADRANT_GAMDEG;
+    uint16_t const raw = static_cast<uint32_t>(static_cast<int32_t>(a)) + QUADRANT_GAMDEG;
     return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
 }
 
@@ -486,13 +521,8 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
  [[nodiscard]] constexpr auto abs(auto const n) -> decltype(n)
 {
-    return (n > decltype(n)(0)) ? n : -n;
+    return (n > decltype(n){0}) ? n : -n;
 }
-
-//[[nodiscard]] constexpr auto abs(fixed32 const n) -> fixed32
-//{
-//    return (n > 0.0_fx) ? n : -n;
-//}
 
 constexpr auto sqrt(fixed32 const x) -> fixed32
 {
@@ -902,23 +932,6 @@ public:
     }
 };
 
-
- [[nodiscard]] constexpr auto mix(auto x, auto y, auto a) -> auto
-{
-    return x * (1.0_fx - a) + y * a;
-}
-
- [[nodiscard]] constexpr auto min(auto x, auto y) -> auto
-{
-    if(x < y) {return x;}
-    return y;
-}
-
- [[nodiscard]] constexpr auto max(auto x, auto y) -> auto
-{
-    if(x > y) {return x;}
-    return y;
-}
 
 
 } // namespace ffm
