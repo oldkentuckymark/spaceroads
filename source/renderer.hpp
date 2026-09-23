@@ -105,8 +105,7 @@ private:
     using RayFieldResult      = std::inplace_vector<RaycastResult, NUM_RAYS>;
     using DeduplicatedRayHits = std::inplace_vector<RayHit, MAX_FIELD_HITS>;
 
-    auto castRay(float camX, float camY, float camZ, float rayYawGamdeg, float offsetGamdeg, ILevel const* const level)
-        -> RaycastResult
+    auto castRay(float camX, float camY, float camZ, float rayYawGamdeg, float offsetGamdeg, ILevel const* const level) -> RaycastResult
     {
         RaycastResult hits;
 
@@ -124,8 +123,12 @@ private:
         const float worldLength = static_cast<float>(length) * CELL_L;
 
         const float rad  = rayYawGamdeg * GAMDEG_TO_RAD;
-        const float dirW = std::sin(rad); // +W (X axis)
-        const float dirL = std::cos(rad); // +L (Z axis)
+        float dirW = std::sin(rad); // +W (X axis)
+        float dirL = std::cos(rad); // +L (Z axis)
+
+        constexpr float dirEpsilon = 1e-4f;
+        if (std::abs(dirW) < dirEpsilon) dirW = 0.0f;
+        if (std::abs(dirL) < dirEpsilon) dirL = 0.0f;
 
         // --- 1. Ray-AABB Intersection ---
         float tMin = 0.0f;
@@ -165,8 +168,12 @@ private:
             rayStartZ += epsilon * dirL;
         }
 
-        int16_t mapW = std::clamp<int16_t>(static_cast<int16_t>(std::floor(rayStartX / CELL_W)), 0, width - 1);
-        int16_t mapL = std::clamp<int16_t>(static_cast<int16_t>(std::floor(rayStartZ / CELL_L)), 0, length - 1);
+        int16_t mapW = static_cast<int16_t>(std::floor(rayStartX / CELL_W));
+        int16_t mapL = static_cast<int16_t>(std::floor(rayStartZ / CELL_L));
+
+        // Safely clamp initial map coordinates to valid grid range to prevent boundary precision crashes
+        mapW = std::clamp<int16_t>(mapW, 0, width - 1);
+        mapL = std::clamp<int16_t>(mapL, 0, length - 1);
 
         // --- 4. DDA Setup ---
         const int16_t stepW = (dirW >= 0.0f) ? 1 : -1;
@@ -256,8 +263,7 @@ private:
             }
         }
 
-        // Sort primary by (w, l) and secondary by distance ascending
-        std::sort(flatHits.begin(), flatHits.end(), [](RayHit const& a, RayHit const& b) {
+        util::sort(flatHits.begin(), flatHits.end(), [](RayHit const& a, RayHit const& b) {
             if (a.w != b.w) return a.w < b.w;
             if (a.l != b.l) return a.l < b.l;
             return a.distance < b.distance;

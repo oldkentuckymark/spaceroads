@@ -8,10 +8,6 @@
 namespace ffm
 {
 
-constexpr uint32_t INVDIV_STEPS = 4;
-constexpr uint32_t INVDIV_MAX = 512;
-constexpr size_t   INVDIV_N     = INVDIV_STEPS * (INVDIV_MAX + 1);
-
 
 constexpr auto log2Pow2(uint32_t v) -> int32_t
 {
@@ -273,66 +269,9 @@ public:
         return r;
     }
 
-    constexpr static auto floor_fixed(fixed32 v) -> int16_t
+    constexpr static auto floor(fixed32 const v) -> int16_t
     {
         return static_cast<int16_t>(v.data >> FIX_SHIFT);
-    }
-
-
-private:
-    consteval static auto makeInvDivTable() -> std::array<fixed32, INVDIV_N>
-    {
-        std::array<fixed32, INVDIV_N> r;
-        double s = 1.0 / INVDIV_STEPS;
-        double x = 0.0;
-
-        x = x + s;
-        for (auto i = 1ul; i < INVDIV_N; ++i)
-        {
-            r[i] = fixed32(1.0 / x);
-            x = x + s;
-        }
-
-        return r;
-    }
-
-     [[nodiscard]] constexpr static auto invDiv(fixed32 const z) -> fixed32
-    {
-        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeInvDivTable()};
-
-
-
-        constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVDIV_STEPS);
-
-        fixed32 v = z;
-        if(z.data < 0) { v.data = -v.data;}
-
-        auto const idx = static_cast<std::size_t>(v.data >> SHIFT);
-
-        fixed32 r = invzlut[idx];
-        if(z.data < 0) {r.data = -r.data;}
-        return r;
-    }
-
-    [[nodiscard]] constexpr static auto invDivUnsafe(fixed32 const z) -> fixed32
-    {
-        constexpr static std::array<fixed32, INVDIV_N> invzlut{makeInvDivTable()};
-        constexpr int32_t SHIFT = fixed32::FIX_SHIFT - log2Pow2(INVDIV_STEPS); // 14
-
-        // Preconditions:
-        // 1. z.data > 0
-        // 2. z.data <= 0x0200C000 (512.75 in fixed32)
-        auto const idx = static_cast<std::size_t>(z.data >> SHIFT);
-        return invzlut[idx];
-    }
-
-public:
-
-    constexpr auto operator|(fixed32 const &that) const -> fixed32
-    {
-        fixed32 r;
-        r = (*this) * invDiv(that);
-        return r;
     }
 
     constexpr auto doubled() const -> fixed32
@@ -362,6 +301,10 @@ public:
         r.data = 0x7FFFFFFF;
         return r;
     }
+
+
+
+
 
 };
 
@@ -446,6 +389,39 @@ consteval auto makeInvsqrtTable() -> LUT
 }
 
 
+constexpr static size_t INVZ_N = 1024;
+
+// Region 0: 0.0 <= Z < 4.0 (Indices 0..255) -> 64 steps/int
+constexpr static size_t REG0_ENTRIES = 256;
+constexpr static int32_t REG0_SHIFT  = 10; // 16 - log2(64)
+
+// Region 1: 4.0 <= Z < 36.0 (Indices 256..1023) -> 32 steps/int
+constexpr static int32_t REG1_SHIFT  = 11; // 16 - log2(32)
+// Offset formula: REG0_ENTRIES - (Boundary_Z * Steps_Per_Int)
+// 256 - (4.0 * 32) = 256 - 128 = 128
+constexpr static size_t REG1_OFFSET = 128;
+
+consteval static auto makeInvDivTable() -> std::array<fixed32, INVZ_N>
+{
+    std::array<fixed32, INVZ_N> r{};
+
+    r[0] = fixed32::max();
+
+    // Region 0: Generated with 64.0 steps per integer
+    for (size_t i = 1; i < REG0_ENTRIES; ++i) {
+        double const z = static_cast<double>(i) / 64.0;
+        r[i] = fixed32(1.0 / z);
+    }
+
+    // Region 1: Generated with 32.0 steps per integer ( perfettamente matches shift >> 11 )
+    for (size_t i = REG0_ENTRIES; i < INVZ_N; ++i) {
+        double const z = 4.0 + (static_cast<double>(i - REG0_ENTRIES) / 32.0);
+        r[i] = fixed32(1.0 / z);
+    }
+
+    return r;
+}
+
 
 
 static constexpr LUT SINTABLE{makeSinTable()};
@@ -453,6 +429,25 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 } // namespace
 
+[[nodiscard]] constexpr static auto invZ(fixed32 const z) -> fixed32
+{
+    constexpr static std::array<fixed32, INVZ_N> invzlut{makeInvDivTable()};
+    constexpr uint32_t MAX_RAW = 2359295u; // ~35.999 in fixed32
+
+    uint32_t const abs_data = (z.data == std::numeric_limits<int32_t>::min())
+                                  ? static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1u
+                                  : static_cast<uint32_t>(z.data < 0 ? -z.data : z.data);
+
+    uint32_t const clamped_abs = std::min(abs_data, MAX_RAW);
+
+    // 262144 is 4.0 in 16.16 fixed-point (4 * 65536)
+    std::size_t const idx = (clamped_abs < 262144u)
+                                ? static_cast<std::size_t>(clamped_abs >> REG0_SHIFT)
+                                : static_cast<std::size_t>(REG1_OFFSET + (clamped_abs >> REG1_SHIFT));
+
+    fixed32 const r = invzlut[idx];
+    return (z.data < 0) ? -r : r;
+}
 
 [[nodiscard]] constexpr auto radiansToGamdegs(fixed32 const a) -> int16_t
 {

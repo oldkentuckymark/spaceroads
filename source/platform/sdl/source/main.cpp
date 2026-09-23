@@ -54,29 +54,29 @@ public:
 
         // ==========================================
         // 2. CAMERA VIEW TRANSFORMATION (World Space -> View Space)
-        // Strict Order: Pitch (X) -> Yaw (Y). Roll (Z) is strictly omitted.
+        // Strict Inverse Order for View Matrix: Inverse Yaw (Y) -> Inverse Pitch (X)
         // ==========================================
-        fixed32 const ccx = cosgd(camRot.x); // Pitch cos
-        fixed32 const csx = singd(camRot.x); // Pitch sin
 
+        // --- Step 1: Camera Inverse Yaw (-camRot.y) FIRST ---
         fixed32 const ccy = cosgd(-camRot.y); // Yaw cos
         fixed32 const csy = singd(-camRot.y); // Yaw sin
 
-        // --- Step 1: Camera Inverse Pitch (-camRot.x) ---
-        vec3 crx;
-        crx.x = worldPos.x;
-        crx.y = worldPos.y * ccx + worldPos.z * csx;
-        crx.z = -worldPos.y * csx + worldPos.z * ccx;
-
-        // --- Step 2: Camera Inverse Yaw (-camRot.y) ---
-        // Matches standard CCW Cartesian table convention (X = cos, Z = sin)
         vec3 cry;
-        cry.x =  crx.x * ccy + crx.z * csy;
-        cry.y =  crx.y;
-        cry.z = -crx.x * csy + crx.z * ccy;
+        cry.x =  worldPos.x * ccy + worldPos.z * csy;
+        cry.y =  worldPos.y;
+        cry.z = -worldPos.x * csy + worldPos.z * ccy;
+
+        // --- Step 2: Camera Inverse Pitch (-camRot.x) SECOND ---
+        fixed32 const ccx = cosgd(-camRot.x); // Pitch cos
+        fixed32 const csx = singd(-camRot.x); // Pitch sin
+
+        vec3 crx;
+        crx.x = cry.x;
+        crx.y = cry.y * ccx - cry.z * csx;  // Correct inverse sign
+        crx.z = cry.y * csx + cry.z * ccx;  // Correct inverse sign
 
         // Output final View Space vertex
-        in = cry;
+        in = crx;
     }
 
     ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};
@@ -234,13 +234,13 @@ auto main() -> int
         {
             inputs[8] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.1_fx;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.3_fx;
         }
         if (keys[SDL_SCANCODE_A])
         {
             inputs[9] = true;
 
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.1_fx;
+            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.3_fx;
         }
         }
 
