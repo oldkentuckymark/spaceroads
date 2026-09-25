@@ -464,7 +464,7 @@ public:
                                  fixed32::round(v2.x), fixed32::round(v2.y), ccs);
                     }
                 }
-                else if (res == ClipResult::Partial)
+                else if (false && res == ClipResult::Partial)
                 {
                     auto outVerts = clip_triangle_accurate(v0, v1, v2);
                     for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
@@ -513,7 +513,7 @@ public:
                             fixed32::round(v3.x), fixed32::round(v3.y), ccs);
                     }
                 }
-                else if (res == ClipResult::Partial)
+                else if (false && res == ClipResult::Partial)
                 {
                     // NOTE: Accurate quad clipping returns TRIANGLES. We iterate by 3, not 4!
                     auto outVerts = clip_quad_accurate(v0, v1, v2, v3);
@@ -582,8 +582,6 @@ protected:
      auto project_to_ndc(vec3& p) -> void
     {
         p.x = p.x * aspect_ratio_;
-        //p.x = p.x / p.z;
-        //p.y = p.y / p.z;
         p.x = p.x * invZ(p.z);
         p.y = p.y * invZ(p.z);
     }
