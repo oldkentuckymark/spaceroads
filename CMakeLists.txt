@@ -24,6 +24,7 @@ set(SPACEROADS_HEADERS
     source/cell.hpp
     source/renderer.hpp
     source/game.hpp
+    source/camera.hpp
 
 )
 
@@ -48,6 +49,7 @@ add_executable(spaceroads-sdl
     ${SPACEROADS_HEADERS}
 
 
+
 )
 
 
@@ -68,7 +70,7 @@ target_include_directories(spaceroads-sdl PUBLIC /opt/devkitpro/libgba/include)
 add_custom_target(data SOURCES ${SPACEROADS_DATA_FILES})
 
 add_custom_target(spaceroads-gba
-    COMMAND make -C ${CMAKE_CURRENT_SOURCE_DIR}/source/platform/gba -f Makefile
+    COMMAND make -j 4 -C ${CMAKE_CURRENT_SOURCE_DIR}/source/platform/gba -f Makefile
     SOURCES ${SPACEROADS_GBA_SOURCES}
     COMMENT "GBA Build"
     VERBATIM

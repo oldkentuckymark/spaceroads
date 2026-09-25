@@ -215,82 +215,110 @@ public:
          }
     }
 
-     auto triangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, Color color) -> void
+    //use extra pixel/s to fill gaps?
+    auto triangle(int16_t x0, int16_t y0,
+                  int16_t x1, int16_t y1,
+                  int16_t x2, int16_t y2,
+                  uint16_t color) -> void
     {
-         if constexpr (HasTriangle<Derived>) {
-             derived().triangle(x0, y0, x1, y1, x2, y2, color);
-         } else {
-             // Default software wireframe/raster loop fallback
+        struct V { int16_t x, y; };
+        V v0{ x0, y0 }, v1{ x1, y1 }, v2{ x2, y2 };
 
-        // Sort so y0 <= y1 <= y2 (top -> bottom), keeping x/y pairs together.
-        if (y0 > y1) { util::swap(x0, x1); util::swap(y0, y1); }
-        if (y1 > y2) { util::swap(x1, x2); util::swap(y1, y2); }
-        if (y0 > y1) { util::swap(x0, x1); util::swap(y0, y1); }
+        // Sort vertices by y ascending
+        if (v1.y < v0.y) std::swap(v0, v1);
+        if (v2.y < v1.y) std::swap(v1, v2);
+        if (v1.y < v0.y) std::swap(v0, v1);
 
-        if (y0 == y2)
-        {
-            return; // zero screen-space height
+        // If no vertical extent, draw single horizontal span
+        if (v0.y == v2.y) {
+            int16_t xmin = std::min({ v0.x, v1.x, v2.x });
+            int16_t xmax = std::max({ v0.x, v1.x, v2.x });
+            lineHorizontal(xmin, v0.y, xmax, color);
+            return;
         }
 
-        fixed32 const fx0 = fixed32(x0);
-        fixed32 const fy0 = fixed32(y0);
-        fixed32 const fx1 = fixed32(x1);
-        fixed32 const fy1 = fixed32(y1);
-        fixed32 const fx2 = fixed32(x2);
-        fixed32 const fy2 = fixed32(y2);
+        // Edge walker: produces an integer x for each scanline y in [y0, y_end)
+        struct EdgeWalker {
+            int32_t x;      // current x for current y
+            int32_t dx;     // abs(delta x)
+            int32_t dy;     // delta y (positive)
+            int32_t sx;     // sign of delta x
+            int32_t err;    // error accumulator
+            int16_t y;      // current y
+            int16_t y_end;  // end y (stop when y == y_end)
 
-        // Long edge spans the full triangle height, v0 -> v2.
-        fixed32 const invslopeLong = (fx2 - fx0) / (fy2 - fy0);
-
-        fixed32 xLong  = fx0;
-        fixed32 xShort = fx0;
-
-        // Upper half, v0 -> v1.
-        if (y1 > y0)
-        {
-            fixed32 const invslopeTop = (fx1 - fx0) / (fy1 - fy0);
-            for (int y = y0; y < y1; ++y)
-            {
-                int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y; int16_t xx1 = static_cast<int16_t>(xShort);
-                auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
-                if(r == 0) {return;}
-                if(r == 1)
-                {
-                    lineHorizontal(xx0, yy0, xx1, color);
-                }
-                xLong  = xLong + invslopeLong;
-                xShort = xShort + invslopeTop;
+            void init(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
+                x = x0;
+                int32_t ddx = int32_t(x1) - int32_t(x0);
+                dx = ddx >= 0 ? ddx : -ddx;
+                sx = (ddx >= 0) ? 1 : -1;
+                dy = int32_t(y1) - int32_t(y0);
+                if (dy < 0) dy = 0; // we only use walkers with y1 >= y0
+                err = 0;
+                y = y0;
+                y_end = y1;
             }
-        }
 
-        xShort = fx1; // resync at the mid vertex; avoids drift from the upper loop
+            // Return current x for the current scanline y.
+            int32_t currentX() const { return x; }
 
-        // Lower half, v1 -> v2.
-        if (y2 > y1)
-        {
-            fixed32 const invslopeBottom = (fx2 - fx1) / (fy2 - fy1);
-            for (int y = y1; y < y2; ++y)
-            {
-                int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y; int16_t xx1 = static_cast<int16_t>(xShort);
-                util::order(xx0,xx1);
-                auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
-                if(r == 0) {return;}
-                if(r == 1)
-                {
-                    lineHorizontal(xx0, yy0, xx1, color);
+            // Advance walker to the next scanline (increment y by 1).
+            // After calling advance, y is incremented (or set to y_end if dy==0).
+            void advance() {
+                if (y >= y_end) return; // already finished
+                // If the edge has zero vertical span, jump to end.
+                if (dy == 0) {
+                    y = y_end;
+                    return;
                 }
-                xLong  = xLong + invslopeLong;
-                xShort = xShort + invslopeBottom;
+                // Standard Bresenham-like vertical stepping:
+                // err += dx; while (err >= dy) { x += sx; err -= dy; }
+                err += dx;
+                // Use while loop to handle steep slopes where dx >> dy without division.
+                while (err >= dy) {
+                    x += sx;
+                    err -= dy;
+                }
+                ++y;
             }
-        }
 
-        int16_t xx0 = static_cast<int16_t>(xLong); int16_t yy0 = y2; int16_t xx1 = static_cast<int16_t>(xShort);
-        auto r = clip_horizontal_line_screen(xx0,yy0,xx1);
-        if(r == 1)
-        {
-            lineHorizontal(xx0, y2, xx1, color); // apex / final row
+            // Whether walker still has a valid x for the current y (y < y_end)
+            bool active() const { return y < y_end; }
+        };
+
+        EdgeWalker e_long;   // v0 -> v2
+        EdgeWalker e_top;    // v0 -> v1
+        EdgeWalker e_bot;    // v1 -> v2
+
+        e_long.init(v0.x, v0.y, v2.x, v2.y);
+        e_top.init(v0.x, v0.y, v1.x, v1.y);
+        e_bot.init(v1.x, v1.y, v2.x, v2.y);
+
+        // Iterate scanlines from top to bottom (y in [v0.y, v2.y) )
+        for (int16_t y = v0.y; y < v2.y; ++y) {
+            // Get x on long edge for this scanline if active; otherwise clamp to endpoint x.
+            int32_t xl = e_long.active() ? e_long.currentX() : e_long.x;
+
+            // Choose which short edge to sample for this scanline:
+            // - upper part: use top edge for y in [v0.y, v1.y)
+            // - lower part: use bottom edge for y in [v1.y, v2.y)
+            int32_t xr;
+            if (y < v1.y) {
+                // If top edge has zero height (v0.y == v1.y), use v1.x directly.
+                xr = e_top.active() ? e_top.currentX() : e_top.x;
+            } else {
+                xr = e_bot.active() ? e_bot.currentX() : e_bot.x;
+            }
+
+            // Determine left/right and draw inclusive horizontal span.
+            int16_t xleft  = int16_t(std::min(xl, xr));
+            int16_t xright = int16_t(std::max(xl, xr));
+            lineHorizontal(xleft, y, xright, color);
+
+            // Advance walkers for next scanline
+            e_long.advance();
+            if (y < v1.y) e_top.advance(); else e_bot.advance();
         }
-         }
     }
 
     auto quad(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t x3, int16_t y3, uint16_t color) -> void
@@ -453,9 +481,9 @@ public:
                         if(is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
                         {
                         to_screen_space(outVerts[k+0]);to_screen_space(outVerts[k+1]);to_screen_space(outVerts[k+2]);
-                        triangle(static_cast<int16_t>(outVerts[k+0].x),static_cast<int16_t>(outVerts[k+0].y),
-                                 static_cast<int16_t>(outVerts[k+1].x),static_cast<int16_t>(outVerts[k+1].y),
-                                 static_cast<int16_t>(outVerts[k+2].x),static_cast<int16_t>(outVerts[k+2].y),ccs);
+                        triangle(fixed32::round(outVerts[k+0].x), fixed32::round(outVerts[k+0].y),
+                                 fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
+                                 fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y),ccs);
                         }
                         }
                     }
@@ -673,6 +701,7 @@ protected:
         p.x = sx * viewport_width_fx_ - 1.0_fx;
         p.y = sy * viewport_height_fx_ - 1.0_fx;
     }
+
 
     [[no_unique_address]] VERTEX_FUNCTION vf_;
 

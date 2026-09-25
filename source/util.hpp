@@ -168,6 +168,7 @@ constexpr auto bubbleSort(auto& container) -> void
     auto t = std::remove_cvref_t<decltype(container[0])>{};
 }
 
+
 template <class RandomIt, class Compare>
 constexpr auto sort(RandomIt begin, RandomIt end, Compare comp) -> void
 {

@@ -15,74 +15,44 @@
 class VertexFunction
 {
 public:
+
     auto operator()(ffm::vec3& in) -> void
     {
-        using namespace ffm;
 
-        // ==========================================
-        // 1. MODEL TRANSFORMATION (Model Space -> World Space)
-        // ==========================================
-        fixed32 const mcx = cosgd(modelRotation.x);
-        fixed32 const msx = singd(modelRotation.x);
+        // 1. Model Space -> World Space
+        ffm::fixed32 wx = in.x + modelPos.x;
+        ffm::fixed32 wy = in.y + modelPos.y;
+        ffm::fixed32 wz = in.z + modelPos.z;
 
-        fixed32 const mcy = cosgd(modelRotation.y);
-        fixed32 const msy = singd(modelRotation.y);
+        // 2. World Space -> Camera-Relative Space (Translate FIRST)
+        // This makes the camera the origin (0,0,0) for the rotation
+        ffm::fixed32 dx = wx - camPos.x;
+        ffm::fixed32 dy = wy - camPos.y;
+        ffm::fixed32 dz = wz - camPos.z;
 
-        fixed32 const mcz = cosgd(modelRotation.z);
-        fixed32 const msz = singd(modelRotation.z);
+        // 3. Apply Camera Yaw Rotation around the Camera's position
+        ffm::fixed32 rx = dx * camYawCos - dz * camYawSin;
+        ffm::fixed32 rz = dx * camYawSin + dz * camYawCos;
+        // dy remains unchanged (Yaw only affects X and Z)
 
-        // --- Model Rotate X ---
-        vec3 rx;
-        rx.x = in.x;
-        rx.y = in.y * mcx - in.z * msx;
-        rx.z = in.y * msx + in.z * mcx;
+        // 4. Output to View Space
+        in.x = rx;
+        in.y = dy;
+        in.z = rz;
 
-        // --- Model Rotate Y ---
-        vec3 ry;
-        ry.x = rx.x * mcy + rx.z * msy;
-        ry.y = rx.y;
-        ry.z = -rx.x * msy + rx.z * mcy;
 
-        // --- Model Rotate Z ---
-        vec3 rz;
-        rz.x = ry.x * mcz - ry.y * msz;
-        rz.y = ry.x * msz + ry.y * mcz;
-        rz.z = ry.z;
-
-        // Translate to Camera Relative Position in World Space
-        vec3 worldPos = rz + modelPos - camPos;
-
-        // ==========================================
-        // 2. CAMERA VIEW TRANSFORMATION (World Space -> View Space)
-        // Strict Inverse Order for View Matrix: Inverse Yaw (Y) -> Inverse Pitch (X)
-        // ==========================================
-
-        // --- Step 1: Camera Inverse Yaw (-camRot.y) FIRST ---
-        fixed32 const ccy = cosgd(-camRot.y); // Yaw cos
-        fixed32 const csy = singd(-camRot.y); // Yaw sin
-
-        vec3 cry;
-        cry.x =  worldPos.x * ccy + worldPos.z * csy;
-        cry.y =  worldPos.y;
-        cry.z = -worldPos.x * csy + worldPos.z * ccy;
-
-        // --- Step 2: Camera Inverse Pitch (-camRot.x) SECOND ---
-        fixed32 const ccx = cosgd(-camRot.x); // Pitch cos
-        fixed32 const csx = singd(-camRot.x); // Pitch sin
-
-        vec3 crx;
-        crx.x = cry.x;
-        crx.y = cry.y * ccx - cry.z * csx;  // Correct inverse sign
-        crx.z = cry.y * csx + cry.z * ccx;  // Correct inverse sign
-
-        // Output final View Space vertex
-        in = crx;
+        //in = in + modelPos - camPos;
     }
 
     ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};
-    ffm::vec3 camRot{0.0_fx, 0.0_fx, 0.0_fx}; // x = pitch, y = yaw (z is ignored)
+    ffm::fixed32 camYawSin, camYawCos;
+    ffm::fixed32 camPitchSin, camPitchCos;
+
     ffm::vec3 modelPos{0.0_fx, 0.0_fx, 0.0_fx};
-    ffm::vec3 modelRotation{0.0_fx, 0.0_fx, 0.0_fx};
+
+    //for futrue use
+    ffm::fixed32 modelYawSin, modelYawCos;
+    ffm::fixed32 modelPitchSin, modelPitchCos;
 };
 
 class Context final : public ffr::BaseContext<Context,VertexFunction>
@@ -155,8 +125,6 @@ auto main() -> int
 {
 
 
-
-    constexpr ffm::fixed32 dt = ffm::fixed32(1.0/60.0);
     auto const * const lp = &level0;
 
 
@@ -169,6 +137,7 @@ auto main() -> int
     renderer.setPlayer(&game.player());
     renderer.setPlayerMesh(Mesh::SHIP_MESH);
     renderer.setLevel(&level0);
+    renderer.setCamera(game.getCamera());
 
 
 
@@ -233,25 +202,18 @@ auto main() -> int
         if (keys[SDL_SCANCODE_S])
         {
             inputs[8] = true;
-
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y + 0.3_fx;
         }
         if (keys[SDL_SCANCODE_A])
         {
             inputs[9] = true;
-
-            renderer.ctx.getVertexFunction().camRot.y = renderer.ctx.getVertexFunction().camRot.y - 0.3_fx;
         }
         }
-
-
 
 
             game.processInputs(inputs);
-            game.update(dt);
+            game.update(1.0_fx);
             renderer.draw();
 
-            auto dt = static_cast<uint16_t>(std::chrono::duration_cast<std::chrono::milliseconds>(c2-c1).count());
             c1 = std::chrono::steady_clock::now();
         }
 

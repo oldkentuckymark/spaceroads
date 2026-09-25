@@ -3,6 +3,7 @@
 
 #include "player.hpp"
 #include "level.hpp"
+#include "camera.hpp"
 
 class Game
 {
@@ -27,6 +28,11 @@ public:
     auto player() -> Player&
     {
         return player_;
+    }
+
+    auto getCamera() -> Camera*
+    {
+        return &camera_;
     }
 
     auto processInputs(std::array<bool, 10> const & inputs) -> void
@@ -63,6 +69,14 @@ public:
         {
             player_.velocity.x = 0.0_fx;
         }
+        if(inputs[L])
+        {
+            camera_.yaw = camera_.yaw - 0.5_fx;
+        }
+        if(inputs[R])
+        {
+            camera_.yaw = camera_.yaw + 0.5_fx;
+        }
 
 
     }
@@ -78,11 +92,14 @@ public:
     auto update(ffm::fixed32 dt) -> void
     {
         player_.position = player_.position + (player_.velocity * dt);
+        camera_.position = player_.position + ffm::vec3{0.0_fx, 1.0_fx, -1.5_fx};
     }
 
 private:
     Player player_;
     ILevel const* current_level_{nullptr};
+
+    Camera camera_;
 };
 
 

@@ -1,9 +1,4 @@
-#include <gba_console.h>
-#include <gba_video.h>
-#include <gba_interrupt.h>
-#include <gba_systemcalls.h>
-#include <gba_input.h>
-
+#include <gba.h>
 
 #include <cstdint>
 
@@ -27,28 +22,46 @@
 #define KEY_MASK     0xFC00
 
 
-class FFT
+class VertexFunction
 {
 public:
 
     auto operator()(ffm::vec3& in) -> void
     {
 
-        using namespace ffm;
+        // 1. Model Space -> World Space
+        ffm::fixed32 wx = in.x + modelPos.x;
+        ffm::fixed32 wy = in.y + modelPos.y;
+        ffm::fixed32 wz = in.z + modelPos.z;
+
+        // 2. World Space -> Camera-Relative Space (Translate FIRST)
+        // This makes the camera the origin (0,0,0) for the rotation
+        ffm::fixed32 dx = wx - camPos.x;
+        ffm::fixed32 dy = wy - camPos.y;
+        ffm::fixed32 dz = wz - camPos.z;
+
+        // 3. Apply Camera Yaw Rotation around the Camera's position
+        ffm::fixed32 rx = dx * camYawCos - dz * camYawSin;
+        ffm::fixed32 rz = dx * camYawSin + dz * camYawCos;
+        // dy remains unchanged (Yaw only affects X and Z)
+
+        // 4. Output to View Space
+        in.x = rx;
+        in.y = dy;
+        in.z = rz;
 
 
-        in = in + modelPos - camPos;
-
+        //in = in + modelPos - camPos;
     }
 
-    ffm::vec3 camPos{0.0_fx,0.0_fx,0_fx};
-    ffm::vec3 modelPos{0.0_fx,0.0_fx,0.0_fx};
-
+    ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::vec3 modelPos{0.0_fx, 0.0_fx, 0.0_fx};
+    ffm::fixed32 camYawSin, camYawCos;
+    ffm::fixed32 modelYawSin, modelYawCos;
 };
-\
 
 
-class Context final : public ffr::BaseContext<Context,FFT>
+class Context final : public ffr::BaseContext<Context, VertexFunction>
 {
 public:
 
@@ -61,136 +74,109 @@ public:
         irqEnable(IRQ_VBLANK);
         SetMode( MODE_5 | BG2_ON );
 
-        // 2. Set the top-left pivot point to 0.
-        // Shifted into 20.8 format (0 << 8 is still 0).
+        REG_BG2CNT |= BG_WRAP;
+
+        // Set the top-left pivot point to 0
         REG_BG2X = 0;
         REG_BG2Y = 0;
 
-        // 3. Calculate 8.8 matrix coefficients.
-        // We multiply the ratio by 256 to convert a standard decimal to 8.8 fixed-point.
-        constexpr int16_t scale_x = static_cast<int16_t>((RENDER_WIDTH * 256) / SCREEN_WIDTH); // 160/240 * 256 = 170 (0x00AA)
+        // Calculate 8.8 matrix coefficients
+        constexpr int16_t scale_x = static_cast<int16_t>((RENDER_WIDTH * 256) / SCREEN_WIDTH);   // 160/240 * 256 = 170 (0x00AA)
         constexpr int16_t scale_y = static_cast<int16_t>((RENDER_HEIGHT * 256) / SCREEN_HEIGHT); // 128/160 * 256 = 204 (0x00CC)
 
-        // 4. Load values into the GBA transform engine registers.
+        // Load values into the GBA transform engine registers
         REG_BG2PA = scale_x; // Horizontal scaling step
         REG_BG2PB = 0;       // Horizontal shearing (none)
         REG_BG2PC = 0;       // Vertical shearing (none)
         REG_BG2PD = scale_y; // Vertical scaling step
 
-        setViewPort(160,128);
+        setViewPort(RENDER_WIDTH, RENDER_HEIGHT);
         setNearZ(1.0_fx);
     }
 
-
-     inline void clear()
+    inline void clear(uint16_t color = 0)
     {
-        for(volatile uint16_t* p = vram;p < vram+(width*height);++p)
-        {
-            *p = 0;
-        }
+        // Duplicate the 16-bit color across a 32-bit word
+        volatile uint32_t fill_color32 = (static_cast<uint32_t>(color) << 16) | color;
+
+        // Mode 5 total transfer count: 160 * 128 = 20,480 pixels = 10,240 32-bit words
+        constexpr uint16_t WORD_COUNT = (RENDER_WIDTH * RENDER_HEIGHT) / 2;
+
+        // Safe uintptr_t conversion compatible with modern C++ compilers
+        REG_DMA3SAD = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(const_cast<uint32_t*>(&fill_color32)));
+        REG_DMA3DAD = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(const_cast<uint16_t*>(vram)));
+
+        // DMA32 is the native libgba constant for 32-bit transfer mode
+        REG_DMA3CNT = WORD_COUNT | DMA_ENABLE | DMA32 | DMA_SRC_FIXED | DMA_DST_INC;
     }
 
-     inline void present()
+    inline void present()
     {
+        VBlankIntrWait();
         flipPage();
     }
 
-     inline void plot(int16_t x, int16_t y, uint16_t c)
+    inline void plot(int16_t x, int16_t y, uint16_t c)
     {
-        vram[(y*width)+x] = c;
+        vram[(y * RENDER_WIDTH) + x] = c;
     }
 
-     inline void lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color)
+    inline void lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color)
     {
-        for(uint16_t* p = (uint16_t*)&vram[y0*width+x0]; p <= &vram[y0*width+x1]; ++p)
+        if(y0 < 0) { return; }
+        if(y0 >= viewport_height_) { return; }
+        if(x0 > x1) std::swap(x0, x1);
+
+
+        if(x0 < 0) { x0 = 0; }
+        if(x0 >= viewport_width_) { x0 = viewport_width_ - 1; }
+        if(x1 < 0) { x1 = 0; }
+        if(x1 >= viewport_width_) { x1 = viewport_width_ - 1; }
+
+        uint16_t* p_16 = const_cast<uint16_t*>(&vram[y0 * RENDER_WIDTH + x0]);
+        int32_t count = x1 - x0 + 1;
+
+        // 1. Align pointer to 32-bit boundary (4 bytes) if starting on an odd halfword
+        if (reinterpret_cast<uintptr_t>(p_16) & 2)
         {
-            *p = color;
-        }
-    }
-
-/*
-    auto lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color) -> void
-    {
-        using namespace gba;
-
-        // 1. Determine active page frame buffer (Bit 4 of REG_DISPCNT controls backbuffer)
-        uint16_t* vram_base = (uint16_t*)0x06000000;
-        if (REG_DISPCNT & (1 << 4)) {
-            vram_base += (VRAM_PAGE_SIZE / 2); // Shift pointer to Page 1
+            *p_16++ = color;
+            --count;
         }
 
-        // Ensure proper left-to-right alignment
-        if (x0 > x1) std::swap(x0, x1);
+        // 2. Perform 32-bit writes for pairs of pixels
+        if (count >= 2)
+        {
+            uint32_t const color32 = (static_cast<uint32_t>(color) << 16) | color;
+            uint32_t* p_32 = reinterpret_cast<uint32_t*>(p_16);
 
-        // Compute starting memory location for this scanline row
-        uint16_t* dest = &vram_base[y0 * MODE5_WIDTH + x0];
-        uint32_t pixel_count = x1 - x0 + 1;
+            int32_t words = count >> 1;
+            count &= 1; // Remaining odd pixel
 
-        // 2. Fall back to direct CPU write if the line is too short for DMA setup overhead
-        if (pixel_count < 6) {
-            while (pixel_count--) {
-                *dest++ = color;
+            while (words--)
+            {
+                *p_32++ = color32;
             }
-            return;
+
+            p_16 = reinterpret_cast<uint16_t*>(p_32);
         }
 
-        // 3. Align destination address to a 32-bit boundary if it starts on an odd pixel
-        if (reinterpret_cast<uintptr_t>(dest) & 2) {
-            *dest++ = color;
-            pixel_count--;
-        }
-
-        // 4. Duplicate the 16-bit BGR555 color across a full 32-bit word (2 pixels)
-        // This allows us to double the transfer speed across the system bus.
-        volatile uint32_t color32 = (static_cast<uint32_t>(color) << 16) | color;
-
-        // Calculate how many 32-bit blocks (2 pixels each) we can safely transfer
-        uint32_t words_to_transfer = pixel_count >> 1;
-        uint32_t leftover_pixels   = pixel_count & 1;
-
-        if (words_to_transfer > 0) {
-            // Set up the DMA 3 registers
-            REG_DMA3SAD = reinterpret_cast<uint32_t>(&color32);
-            REG_DMA3DAD = reinterpret_cast<uint32_t>(dest);
-
-            // Execute the DMA transfer immediately
-            REG_DMA3CNT = words_to_transfer |
-                          DMA_ENABLE |
-                          DMA_TIMING_IMMED |
-                          DMA_SRC_FIXED |
-                          DMA_DST_INC |
-                          DMA_32; // [1]
-
-            // Advance our destination pointer past the DMA'd memory block
-            dest += (words_to_transfer << 1);
-        }
-
-        // 5. Clean up any trailing leftover odd pixel
-        if (leftover_pixels) {
-            *dest = color;
+        // 3. Handle trailing leftover pixel
+        if (count > 0)
+        {
+            *p_16 = color;
         }
     }
-*/
 
 private:
-
-    // BG2 Affine 2x2 Matrix Scale Registers (8.8 Fixed Point)
-
-    constexpr static uint16_t width = 160;
-    constexpr static uint16_t height = 128;
 
     volatile uint16_t * FB = (uint16_t*)0x6000000;
     volatile uint16_t * BB = (uint16_t*)0x600A000;
 
-
     volatile uint16_t * vram = BB;
 
-     inline void flipPage()
+    inline void flipPage()
     {
-
-        //while(REG_VCOUNT >= 160); // Wait for vertical blank
-
-        if(REG_DISPCNT & 0x10)
+        if (REG_DISPCNT & 0x10)
         {
             REG_DISPCNT &= ~0x10; // Show Frame 0
             vram = BB;
@@ -201,64 +187,9 @@ private:
             vram = FB;
         }
     }
-
 };
 
 
-
-/*
-class Context final : public ffr::Context<FFT>
-{
-public:
-
-    Context()
-    {
-        // Enable Vblank Interrupt to allow VblankIntrWait
-        irqEnable(IRQ_VBLANK);
-        SetMode( MODE_3 | BG2_ON );
-    }
-
-    inline void clear() override
-    {
-        for(volatile uint16_t* p = vram;p < vram+(width*height);++p)
-        {
-            *p = 0;
-        }
-    }
-
-    inline void present() override
-    {
-
-    }
-
-    inline void plot(int16_t x, int16_t y, uint16_t c) override
-    {
-        vram[(y*width)+x] = c;
-    }
-
-    inline void lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color) override
-    {
-        if(x0 > x1)
-        {
-            auto tmp = x0;
-            x0 = x1;
-            x1 = tmp;
-        }
-
-        for(uint16_t* p = (uint16_t*)&vram[(y0*width)+x0]; p <= &vram[(y0*width)+x1]; ++p)
-        {
-            *p = color;
-        }
-    }
-
-private:
-    constexpr static uint16_t width = 240;
-    constexpr static uint16_t height = 160;
-
-    volatile uint16_t * vram = (uint16_t*)0x6000000;
-
-};
-*/
 
 
 uint32_t getKeyState(uint16_t key_code)
@@ -268,110 +199,107 @@ uint32_t getKeyState(uint16_t key_code)
 
 
 
-class FixedPointTimer
-{
+class Timer {
 public:
+    // Q16.16 fixed-point type (public data member as requested)
+    struct fixed32 {
+        int32_t data; // Q16.16 value: integer part in high 16 bits, fractional in low 16 bits
+    };
 
-    static constexpr uint32_t TIMER_BASE_ADDR = 0x04000100;
-    static constexpr uint32_t CPU_CLOCK_HZ = 16777216; // ~16.78 MHz
-
-
-    static constexpr uint32_t PRESCALER_DIVS[] = {1, 64, 256, 1024};
-
-private:
-
-    uint8_t timer_id;
-    uint16_t prev_counter;
-    bool running;
-    uint32_t current_prescaler_divisor;
-
-
-    auto getControlReg() -> volatile uint16_t*
-    {
-        return reinterpret_cast<volatile uint16_t*>(TIMER_BASE_ADDR + (timer_id * 4) + 2);
-    }
-
-
-    auto getCounterReg() -> volatile uint16_t*
-    {
-        return reinterpret_cast<volatile uint16_t*>(TIMER_BASE_ADDR + (timer_id * 4));
-    }
-
-public:
-
-    FixedPointTimer(uint8_t id = 0)
-        : timer_id(id), prev_counter(0xFFFF), running(false), current_prescaler_divisor(1)
-    {
-
-    }
-
-    ~FixedPointTimer()
+    Timer() noexcept
     {
         stop();
+        *TM0CNT_L = 0;
+        *TM0CNT_H = 0;
+        m_overflow = 0;
+        m_prevLow = 0;
+        m_lastTicks = 0;
     }
 
-
-    auto start(uint8_t prescalerIndex = 1) -> void  // Default to DIV64 for reasonable resolution
+    // Start Timer0 free-running with prescaler = 1 (tick = 1 / CPU_HZ)
+    void start() noexcept
     {
-
-        if (prescalerIndex > 3) return; // Invalid
-
-        volatile uint16_t* ctrl = getControlReg();
-
-        // Set prescaler and enable bit
-        *ctrl = (prescalerIndex & 0x03) | 0x80;
-
-        current_prescaler_divisor = PRESCALER_DIVS[prescalerIndex];
-        prev_counter = *getCounterReg();
-        running = true;
+        *TM0CNT_L = 0;
+        m_overflow = 0;
+        m_prevLow = 0;
+        m_lastTicks = 0;
+        *TM0CNT_H = static_cast<std::uint16_t>(TIMER_PRESCALE_1 | TIMER_ENABLE);
     }
 
-    auto stop() -> void
+    // Stop Timer0
+    void stop() noexcept
     {
-        if (!running) return;
-        volatile uint16_t* ctrl = getControlReg();
-        *ctrl &= ~0x80; // Clear enable bit
-        running = false;
+        std::uint16_t ctrl = *TM0CNT_H;
+        ctrl &= static_cast<std::uint16_t>(~TIMER_ENABLE);
+        *TM0CNT_H = ctrl;
     }
 
-    auto isRunning() const -> bool { return running; }
-
-    auto getDelta() -> ffm::fixed32
+    // Return elapsed time since last getdt() as Q16.16 fixed-point (fixed32).
+    // The returned fixed32.data holds seconds in Q16.16 format.
+    fixed32 getdt() noexcept
     {
-        if (!running) { return ffm::fixed32{}; }
+        const std::uint32_t ticks = readTicks32();
+        const std::uint32_t prev = m_lastTicks;
+        const std::uint32_t delta = ticks - prev; // unsigned wrap handles natural wrap-around
+        m_lastTicks = ticks;
 
-        volatile uint16_t* counter = getCounterReg();
-        uint16_t current = *counter;
+        // Convert delta ticks to Q16.16 seconds.
+        // On GBA CPU_HZ = 16,777,216 = 2^24. So:
+        // fixed = (delta * 2^16) / 2^24 = delta / 2^8 = delta >> 8
+        // This avoids any division or floating point.
+        fixed32 out;
+        out.data = static_cast<int32_t>(delta >> SHIFT_TICKS_TO_Q16); // delta >> 8
+        return out;
+    }
 
-        // Calculate elapsed ticks handling wrap-around
-        // Timer counts DOWN: 0xFFFF -> ... -> 0x0000 -> 0xFFFF
-        int32_t delta_ticks;
+    // Optional: total seconds since start as Q16.16 (does not modify last-tick marker)
+    fixed32 totalSecondsFixed() noexcept
+    {
+        const std::uint32_t ticks = readTicks32();
+        fixed32 out;
+        out.data = static_cast<int32_t>(ticks >> SHIFT_TICKS_TO_Q16);
+        return out;
+    }
 
-        if (current <= prev_counter)
-        {
-            // Normal case: no wrap-around between samples
-            delta_ticks = static_cast<int32_t>(prev_counter) - static_cast<int32_t>(current);
+private:
+    // Read a consistent 32-bit tick count by polling the 16-bit hardware counter
+    // and updating a software overflow counter when the 16-bit counter wraps.
+    // Note: if the 16-bit counter wraps multiple times between reads, extra wraps
+    // will not be detected. Call getdt() frequently enough (at least once per 65536 ticks).
+    std::uint32_t readTicks32() noexcept
+    {
+        const std::uint16_t low = *TM0CNT_L;
+
+        // Detect wrap relative to previous low value
+        if (low < m_prevLow) {
+            ++m_overflow;
         }
-        else
-        {
-            // Wrap-around occurred: counter rolled from 0 to 65535
-            delta_ticks = static_cast<int32_t>(prev_counter) + (65536 - current);
-        }
 
-        prev_counter = current;
+        m_prevLow = low;
 
-        // Convert ticks to seconds using fixed-point arithmetic
-        // Formula: Seconds = Ticks / PrescalerDivisor
-        // In Q16.16: Result = (Ticks * 65536) / PrescalerDivisor
-
-        int64_t numerator = static_cast<int64_t>(delta_ticks) * 65536;
-        int32_t result_raw = static_cast<int32_t>(numerator / current_prescaler_divisor);
-
-        ffm::fixed32 r;
-        r.data = result_raw;
-        return r;
+        return (static_cast<std::uint32_t>(m_overflow) << 16) | static_cast<std::uint32_t>(low);
     }
 
+private:
+    // Hardware registers (memory-mapped IO)
+    static inline volatile std::uint16_t* const TM0CNT_L =
+        reinterpret_cast<volatile std::uint16_t*>(0x04000100);
+    static inline volatile std::uint16_t* const TM0CNT_H =
+        reinterpret_cast<volatile std::uint16_t*>(0x04000102);
+
+    // All constants inside the class
+    static constexpr std::uint16_t TIMER_ENABLE       = static_cast<std::uint16_t>(1u << 7);
+    static constexpr std::uint16_t TIMER_PRESCALE_1   = static_cast<std::uint16_t>(0u << 0);
+
+    // GBA CPU frequency: 16,777,216 Hz = 2^24
+    // SHIFT_TICKS_TO_Q16 = 24 - 16 = 8, so delta >> 8 yields Q16.16 seconds
+    static constexpr std::uint32_t CPU_HZ = 16'777'216u;
+    static constexpr int SHIFT_TICKS_TO_Q16 = 8;
+
+    // Software state (no atomics; single-threaded / non-interrupt use)
+    std::uint32_t m_overflow{0};   // number of times the 16-bit timer wrapped
+    std::uint16_t m_prevLow{0};    // previous low counter value for wrap detection
+    std::uint32_t m_lastTicks{0};  // last tick count returned by getdt()
 };
 
 
@@ -383,13 +311,14 @@ int main(void)
 
     Game game;
     Renderer<Context> renderer;
-    FixedPointTimer timer(0);
-    timer.start(FixedPointTimer::PRESCALER_DIVS[1]);
+    //FixedPointTimer timer(0);
+    //timer.start(FixedPointTimer::PRESCALER_DIVS[1]);
 
     renderer.setPlayer(&game.player());
     renderer.setPlayerMesh(Mesh::SHIP_MESH);
     //renderer.setDrawDistance(10);
     renderer.setLevel(&level0);
+    renderer.setCamera(game.getCamera());
 
     std::array<bool,10> inputs{};
 
@@ -411,8 +340,7 @@ int main(void)
 
 
         game.processInputs(inputs);
-        ffm::fixed32 dt = timer.getDelta();
-        game.update(dt);
+        game.update(1.0_fx);
         renderer.draw();
     }
 

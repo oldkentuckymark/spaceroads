@@ -97,215 +97,133 @@ public:
 class fixed32
 {
 public:
-    static constexpr int32_t const FIX_SHIFT = 16;
-    static constexpr int32_t const FIX_SCALE = 65536;
-    static constexpr double const FIX_SCALEF = 65536.0;
+    static constexpr int32_t FIX_SHIFT = 16;
+    static constexpr int32_t FIX_SCALE = 65536;
+    static constexpr double FIX_SCALEF = 65536.0;
 
     int32_t data{0};
 
-     constexpr fixed32() = default;
+    constexpr fixed32() = default;
 
-     constexpr explicit fixed32(int8_t const &that)
-        : data(that << FIX_SHIFT)
-    {}
+    constexpr explicit fixed32(int8_t const that)   : data(static_cast<int32_t>(that) << FIX_SHIFT) {}
+    constexpr explicit fixed32(uint8_t const that)  : data(static_cast<int32_t>(that) << FIX_SHIFT) {}
+    constexpr explicit fixed32(int16_t const that)  : data(static_cast<int32_t>(that) << FIX_SHIFT) {}
+    constexpr explicit fixed32(uint16_t const that) : data(static_cast<int32_t>(that) << FIX_SHIFT) {}
+    constexpr explicit fixed32(int32_t const that)  : data(that << FIX_SHIFT) {}
+    constexpr explicit fixed32(uint32_t const that) : data(static_cast<int32_t>(that) << FIX_SHIFT) {}
 
-     constexpr explicit fixed32(int16_t const &that)
-        : data(that << FIX_SHIFT)
-    {}
+    consteval explicit fixed32(double const that)   : data(static_cast<int32_t>(that * FIX_SCALEF)) {}
 
-    constexpr explicit fixed32(int32_t const &that)
-        : data(that << FIX_SHIFT)
-    {}
-
-    constexpr explicit fixed32(double const &that)
-        : data(static_cast<int32_t>(that * FIX_SCALEF))
-    {}
-
-    constexpr auto operator=(int8_t const that) -> fixed32 &
-    {
-        data = that << FIX_SHIFT;
-        return (*this);
-    }
-
-    constexpr auto operator=(int16_t const that) -> fixed32 &
-    {
-        data = that << FIX_SHIFT;
-        return (*this);
-    }
-
-    constexpr auto operator=(int32_t const that) -> fixed32 &
-    {
-        data = that << FIX_SHIFT;
-        return (*this);
-    }
-
-
-     constexpr auto operator=(double const that) -> fixed32 &
-    {
-        data = static_cast<int32_t>(that * FIX_SCALEF);
-        return (*this);
-    }
-
-    constexpr auto operator+=(fixed32 const that) -> fixed32&
-    {
-        data += that.data;
-        return (*this);
-    }
-
-    constexpr auto operator-=(fixed32 const that) -> fixed32&
-    {
-        data -= that.data;
-        return (*this);
-    }
-
-    constexpr auto operator<<(int32_t const that) -> fixed32&
-    {
-        data = (data << that);
-        return (*this);
-    }
-
-    constexpr auto operator>>(int32_t const that) -> fixed32&
-    {
-        data = (data >> that);
-        return (*this);
-    }
-
-    constexpr auto operator<<(fixed32 const that) -> fixed32&
-    {
-        data = (data << that.data);
-        return (*this);
-    }
-
-    constexpr auto operator>>(fixed32 const that) -> fixed32&
-    {
-        data = (data >> that.data);
-        return (*this);
-    }
-
-
-     constexpr explicit operator int8_t() const { return data >> FIX_SHIFT; }
-
-     constexpr explicit operator uint8_t() const { return static_cast<uint8_t>(data >> FIX_SHIFT); }
-
-     constexpr explicit operator int16_t() const { return data >> FIX_SHIFT; }
-
-     constexpr explicit operator int32_t() const { return data >> FIX_SHIFT; }
-
-     consteval explicit operator double() const { return data / FIX_SCALEF; }
-
-     explicit operator float() const { return data / FIX_SCALEF; }
-
-     constexpr explicit operator fixed16() const
-    {
-        fixed16 r;
-        r.data = static_cast<int16_t>((data + 128) >> 8);
-        return r;
-    }
-
-     constexpr auto operator+(fixed32 const that) const -> fixed32
-    {
-        fixed32 r;
-        r.data = data + that.data;
-        return r;
-    }
-
-     constexpr auto operator-(fixed32 const that) const -> fixed32
-    {
-        fixed32 r;
-        r.data = data - that.data;
-        return r;
-    }
-
-     constexpr auto operator*(fixed32 const that) const -> fixed32
-    {
-        fixed32 r;
-        r.data = (int64_t(data) * that.data) >> FIX_SHIFT;
-        return r;
-    }
-
-     constexpr auto operator/(fixed32 const that) const -> fixed32
-    {
-        fixed32 r;
-        r.data = (int64_t(data) * FIX_SCALE) / (that.data);
-        return r;
-    }
-
-     constexpr auto operator-() const -> fixed32
-    {
-        fixed32 r;
-        r.data = this->data * -1;
-        return r;
-    }
-
-     constexpr auto operator==(fixed32 const &that) const -> bool
-    {
-        return this->data == that.data;
-    }
-
-     constexpr auto operator<(fixed32 const &that) const -> bool
-    {
-        return this->data < that.data;
-    }
-
-     constexpr auto operator>(fixed32 const &that) const -> bool
-    {
-        return this->data > that.data;
-    }
-
-     constexpr auto operator<=(fixed32 const &that) const -> bool
-    {
-        return this->data <= that.data;
-    }
-
-     constexpr auto operator>=(fixed32 const &that) const -> bool
-    {
-        return this->data >= that.data;
-    }
-
-    constexpr static auto fromRaw(int32_t const val) -> fixed32
+    [[nodiscard]] constexpr static auto fromRaw(int32_t const val) -> fixed32
     {
         fixed32 r;
         r.data = val;
         return r;
     }
 
-    constexpr static auto floor(fixed32 const v) -> int16_t
+    constexpr auto operator=(int8_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
+    constexpr auto operator=(uint8_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
+    constexpr auto operator=(int16_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
+    constexpr auto operator=(uint16_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
+    constexpr auto operator=(int32_t const that) -> fixed32& { data = that << FIX_SHIFT; return *this; }
+    constexpr auto operator=(uint32_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
+
+    consteval auto operator=(double const that) -> fixed32&
+    {
+        data = static_cast<int32_t>(that * FIX_SCALEF);
+        return *this;
+    }
+
+    [[nodiscard]] constexpr auto operator+(fixed32 const that) const -> fixed32
+    {
+        return fromRaw(data + that.data);
+    }
+
+    [[nodiscard]] constexpr auto operator-(fixed32 const that) const -> fixed32
+    {
+        return fromRaw(data - that.data);
+    }
+
+    [[nodiscard]] constexpr auto operator*(fixed32 const that) const -> fixed32
+    {
+        return fromRaw(static_cast<int32_t>((static_cast<int64_t>(data) * that.data) >> FIX_SHIFT));
+    }
+
+    [[nodiscard]] constexpr auto operator/(fixed32 const that) const -> fixed32
+    {
+        return fromRaw(static_cast<int32_t>((static_cast<int64_t>(data) * FIX_SCALE) / that.data));
+    }
+
+    [[nodiscard]] constexpr auto operator/(int16_t const scalar) const -> fixed32
+    {
+        return fromRaw(data / scalar);
+    }
+
+    [[nodiscard]] constexpr auto operator/(int32_t const scalar) const -> fixed32
+    {
+        return fromRaw(data / scalar);
+    }
+
+    constexpr auto operator+=(fixed32 const that) -> fixed32& { data += that.data; return *this; }
+    constexpr auto operator-=(fixed32 const that) -> fixed32& { data -= that.data; return *this; }
+    constexpr auto operator*=(fixed32 const that) -> fixed32& { *this = *this * that; return *this; }
+    constexpr auto operator/=(fixed32 const that) -> fixed32& { *this = *this / that; return *this; }
+    constexpr auto operator/=(int32_t const scalar) -> fixed32& { data /= scalar; return *this; }
+
+    [[nodiscard]] constexpr auto operator<<(int32_t const shift) const -> fixed32
+    {
+        return fromRaw(data << shift);
+    }
+
+    [[nodiscard]] constexpr auto operator>>(int32_t const shift) const -> fixed32
+    {
+        return fromRaw(data >> shift);
+    }
+
+    constexpr auto operator<<=(int32_t const shift) -> fixed32&
+    {
+        data <<= shift;
+        return *this;
+    }
+
+    constexpr auto operator>>=(int32_t const shift) -> fixed32&
+    {
+        data >>= shift;
+        return *this;
+    }
+
+    [[nodiscard]] constexpr auto operator-() const -> fixed32
+    {
+        return fromRaw(-data);
+    }
+
+    constexpr explicit operator bool() const { return data != 0; }
+    constexpr explicit operator int8_t() const { return static_cast<int8_t>(data >> FIX_SHIFT); }
+    constexpr explicit operator uint8_t() const { return static_cast<uint8_t>(data >> FIX_SHIFT); }
+    constexpr explicit operator int16_t() const { return static_cast<int16_t>(data >> FIX_SHIFT); }
+    constexpr explicit operator int32_t() const { return data >> FIX_SHIFT; }
+
+    consteval explicit operator double() const { return static_cast<double>(data) / FIX_SCALEF; }
+
+    [[nodiscard]] constexpr auto operator<=>(fixed32 const&) const = default;
+
+    [[nodiscard]] constexpr auto doubled() const -> fixed32 { return fromRaw(data << 1); }
+    [[nodiscard]] constexpr auto halved() const -> fixed32  { return fromRaw(data >> 1); }
+
+    [[nodiscard]] constexpr static auto round(fixed32 const v) -> int16_t
+    {
+        int32_t const offset = (v.data >= 0) ? 0x8000 : 0x7FFF;
+        return static_cast<int16_t>((v.data + offset) >> FIX_SHIFT);
+    }
+
+    [[nodiscard]] constexpr static auto floor(fixed32 const v) -> int16_t
     {
         return static_cast<int16_t>(v.data >> FIX_SHIFT);
     }
 
-    constexpr auto doubled() const -> fixed32
-    {
-        fixed32 r;
-        r.data = this->data << 1;
-        return r;
-    }
-
-    constexpr auto halved() const -> fixed32
-    {
-        fixed32 r;
-        r.data = this->data >> 1;
-        return r;
-    }
-
-    constexpr static auto tiny() -> fixed32
-    {
-        fixed32 r;
-        r.data = 1;
-        return r;
-    }
-
-    constexpr static auto max() -> fixed32
-    {
-        fixed32 r;
-        r.data = 0x7FFFFFFF;
-        return r;
-    }
-
-
-
-
-
+    [[nodiscard]] constexpr static auto epsilon() -> fixed32 { return fromRaw(1); }
+    [[nodiscard]] constexpr static auto lowest()  -> fixed32 { return fromRaw(static_cast<int32_t>(0x80000000)); }
+    [[nodiscard]] constexpr static auto max()     -> fixed32 { return fromRaw(0x7FFFFFFF); }
 };
 
 
@@ -332,8 +250,6 @@ constexpr fixed32 TAU = 6.28318530_fx;
 constexpr size_t GAMDEG_IN_CIRCLE = 256; //must be power of 2
 constexpr fixed32 RAD_TO_GAMDEG = fixed32(GAMDEG_IN_CIRCLE / TAUF);
 constexpr fixed32 GAMDEG_TO_RAD = static_cast<fixed32>(TAUF / GAMDEG_IN_CIRCLE);
-constexpr uint16_t QUADRANT_GAMDEG{GAMDEG_IN_CIRCLE / 4};
-
 
 namespace
 {
@@ -389,39 +305,43 @@ consteval auto makeInvsqrtTable() -> LUT
 }
 
 
-constexpr static size_t INVZ_N = 1024;
+static constexpr size_t INVZ_N = 1024;
+static constexpr uint32_t INVZ_BOUNDARY  = 2;     // near/far split (power of 2)
+static constexpr uint32_t INVZ_FAR_SHIFT = 4;     // far range = boundary * 2^this
 
-// Region 0: 0.0 <= Z < 4.0 (Indices 0..255) -> 64 steps/int
-constexpr static size_t REG0_ENTRIES = 256;
-constexpr static int32_t REG0_SHIFT  = 10; // 16 - log2(64)
-
-// Region 1: 4.0 <= Z < 36.0 (Indices 256..1023) -> 32 steps/int
-constexpr static int32_t REG1_SHIFT  = 11; // 16 - log2(32)
-// Offset formula: REG0_ENTRIES - (Boundary_Z * Steps_Per_Int)
-// 256 - (4.0 * 32) = 256 - 128 = 128
-constexpr static size_t REG1_OFFSET = 128;
-
-consteval static auto makeInvDivTable() -> std::array<fixed32, INVZ_N>
+consteval uint32_t log2(uint32_t x)
 {
-    std::array<fixed32, INVZ_N> r{};
-
-    r[0] = fixed32::max();
-
-    // Region 0: Generated with 64.0 steps per integer
-    for (size_t i = 1; i < REG0_ENTRIES; ++i) {
-        double const z = static_cast<double>(i) / 64.0;
-        r[i] = fixed32(1.0 / z);
-    }
-
-    // Region 1: Generated with 32.0 steps per integer ( perfettamente matches shift >> 11 )
-    for (size_t i = REG0_ENTRIES; i < INVZ_N; ++i) {
-        double const z = 4.0 + (static_cast<double>(i - REG0_ENTRIES) / 32.0);
-        r[i] = fixed32(1.0 / z);
-    }
-
-    return r;
+    return x <= 1 ? 0 : 1 + log2(x >> 1);
 }
 
+
+
+consteval auto makeInvZTable() -> std::array<fixed32, INVZ_N>
+{
+    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
+    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
+    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
+    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
+    constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
+    constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
+    constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
+
+    std::array<fixed32, INVZ_N> table{};
+
+    for (uint32_t i = 0; i < R0_ENTRIES; ++i)
+    {
+        double const z = static_cast<double>(i << R0_SHIFT) / fixed32::FIX_SCALEF;
+        table[i] = (i == 0) ? fixed32(4.0) : fixed32(1.0 / z);
+    }
+
+    for (uint32_t i = 0; i < R1_ENTRIES; ++i)
+    {
+        double const z = static_cast<double>(R0_MAX_RAW + (i << R1_SHIFT)) / fixed32::FIX_SCALEF;
+        table[R1_OFFSET + i] = fixed32(1.0 / z);
+    }
+
+    return table;
+}
 
 
 static constexpr LUT SINTABLE{makeSinTable()};
@@ -431,24 +351,28 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 [[nodiscard]] constexpr static auto invZ(fixed32 const z) -> fixed32
 {
-    constexpr static std::array<fixed32, INVZ_N> invzlut{makeInvDivTable()};
-    constexpr uint32_t MAX_RAW = 2359295u; // ~35.999 in fixed32
 
-    uint32_t const abs_data = (z.data == std::numeric_limits<int32_t>::min())
-                                  ? static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1u
-                                  : static_cast<uint32_t>(z.data < 0 ? -z.data : z.data);
+    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
+    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
+    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
+    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
+    constexpr uint32_t Z_MAX_RAW    = R0_MAX_RAW + (R1_RANGE << 16);
+    constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
+    constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
+    constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
 
-    uint32_t const clamped_abs = std::min(abs_data, MAX_RAW);
+    static constexpr auto table = makeInvZTable();
 
-    // 262144 is 4.0 in 16.16 fixed-point (4 * 65536)
-    std::size_t const idx = (clamped_abs < 262144u)
-                                ? static_cast<std::size_t>(clamped_abs >> REG0_SHIFT)
-                                : static_cast<std::size_t>(REG1_OFFSET + (clamped_abs >> REG1_SHIFT));
+    uint32_t const raw = static_cast<uint32_t>(z.data < 0 ? -z.data : z.data);
+    uint32_t const clamped = (raw < Z_MAX_RAW) ? raw : (Z_MAX_RAW - 1);
 
-    fixed32 const r = invzlut[idx];
+    uint32_t const idx = (clamped < R0_MAX_RAW)
+                             ? (clamped >> R0_SHIFT)
+                             : (R1_OFFSET + ((clamped - R0_MAX_RAW) >> R1_SHIFT));
+
+    fixed32 const r = table[idx];
     return (z.data < 0) ? -r : r;
 }
-
 [[nodiscard]] constexpr auto radiansToGamdegs(fixed32 const a) -> int16_t
 {
     // 1. Single fixed-point multiply
@@ -484,14 +408,12 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 [[nodiscard]] constexpr auto singd(fixed32 const a) -> fixed32
 {
-    uint16_t const raw = static_cast<uint32_t>(static_cast<int32_t>(a));
-    return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
+    return SINTABLE[static_cast<uint8_t>(a)];
 }
 
 [[nodiscard]] constexpr auto cosgd(fixed32 const a) -> fixed32
 {
-    uint16_t const raw = static_cast<uint32_t>(static_cast<int32_t>(a)) + QUADRANT_GAMDEG;
-    return SINTABLE[raw & (GAMDEG_IN_CIRCLE - 1)];
+    return SINTABLE[static_cast<uint8_t>(static_cast<uint8_t>(a) + (GAMDEG_IN_CIRCLE/4))];
 }
 
 [[nodiscard]] constexpr auto sin(fixed32 const a) -> fixed32
@@ -516,7 +438,7 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
  [[nodiscard]] constexpr auto abs(auto const n) -> decltype(n)
 {
-    return (n > decltype(n){0}) ? n : -n;
+    return (n > decltype(n){}) ? n : -n;
 }
 
 constexpr auto sqrt(fixed32 const x) -> fixed32
