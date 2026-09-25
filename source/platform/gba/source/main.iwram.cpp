@@ -90,7 +90,7 @@ public:
         REG_BG2PC = 0;       // Vertical shearing (none)
         REG_BG2PD = scale_y; // Vertical scaling step
 
-        setViewPort(RENDER_WIDTH, RENDER_HEIGHT);
+        setViewPort(0,0,RENDER_WIDTH, RENDER_HEIGHT);
         setNearZ(1.0_fx);
     }
 

@@ -115,7 +115,7 @@ template<class T, std::size_t N>
     ffm::vec3 const edge2 = v2 - v0;
 
     // Compute the cross product to get the unnormalized normal
-    ffm::vec3 const normal = ffm::vec3::cross(edge1, edge2);
+    ffm::vec3 const normal = ffm::vec3::cross(edge2, edge1);
 
     // Normalize the result to get a unit vector
     return normal / normal.length();

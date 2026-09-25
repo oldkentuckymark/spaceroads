@@ -47,7 +47,7 @@ public:
 
 
 
-    consteval Level(int16_t const oxygen, int16_t const gravity, ffm::vec3 const sunVector = {0.0_fx,-1.0_fx,0.0_fx}, ffm::vec3 const sunColor = {1.0_fx,1.0_fx,1.0_fx}) :
+    consteval Level(int16_t const oxygen, int16_t const gravity, ffm::vec3 const sunVector = {0.0_fx,1.0_fx,0.0_fx}, ffm::vec3 const sunColor = {1.0_fx,1.0_fx,1.0_fx}) :
         oxygen_(oxygen), gravity_(gravity), sun_vector_(sunVector), sun_color_(sunColor)
     {
 
@@ -588,21 +588,21 @@ public:
 
 
 
-constexpr static Level<"../data/levels/level0.txt"> level0(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level0(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level1(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level2(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level2(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level3(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level4(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level4(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level5(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level6(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level6(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level7(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level8(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level8(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level9(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level10(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level10(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level11(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level12(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level12(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level13(100,500);
-constexpr static Level<"../data/levels/level0.txt"> level14(100,500,ffm::vec3{0.1_fx,-1.0_fx,0.1_fx});
+constexpr static Level<"../data/levels/level0.txt"> level14(100,500);
 constexpr static Level<"../data/levels/level1.txt"> level15(100,500);
 
 

@@ -65,7 +65,7 @@ public:
         tex = SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, RENDER_WIDTH,RENDER_HEIGHT);
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetRenderTarget(ren,tex);
-        setViewPort(RENDER_WIDTH, RENDER_HEIGHT);
+        setViewPort(0,0, RENDER_WIDTH,RENDER_HEIGHT);
         setNearZ(1.0_fx);
     }
 
@@ -91,14 +91,14 @@ public:
         SDL_SetRenderTarget(ren,tex);
     }
 
-    auto lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color) -> void
+    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
     {
         auto cc = util::Convert555to888(color);
         SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
         SDL_RenderLine(ren, x0,y0,x1,y0);
     }
 
-    auto plot(int16_t x, int16_t y, uint16_t color) -> void
+    auto plot(int32_t x, int32_t y, uint16_t color) -> void
     {
         auto cc = util::Convert555to888(color);
         SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
@@ -106,12 +106,12 @@ public:
     }
 
 private:
-    int scale = 4;
-    int SCREEN_WIDTH = 240;
-    int SCREEN_HEIGHT = 160;
+    int32_t scale = 4;
+    int32_t SCREEN_WIDTH = 240;
+    int32_t SCREEN_HEIGHT = 160;
 
-    int RENDER_WIDTH = 160;
-    int RENDER_HEIGHT = 128;
+    int32_t RENDER_WIDTH = 160;
+    int32_t RENDER_HEIGHT = 128;
 
     SDL_Window* win{nullptr};
     SDL_Renderer* ren{nullptr};

@@ -22,7 +22,7 @@ concept IsVertexFunction = requires(F f, vec3& v) {
 };
 
 template<typename T>
-concept HasPlot = requires(T t, int16_t x, int16_t y, uint16_t color) {
+concept HasPlot = requires(T t, int32_t x, int32_t y, uint16_t color) {
     { t.plot(x, y, color) } -> std::same_as<void>;
 };
 
@@ -30,7 +30,7 @@ template<typename T>
 concept HasLine = requires {
     requires std::is_same_v<
         decltype(&T::line),
-        auto (T::*)(int16_t, int16_t, int16_t, int16_t, uint16_t) -> void
+        auto (T::*)(int32_t, int32_t, int32_t, int32_t, uint16_t) -> void
         >;
 };
 
@@ -38,7 +38,7 @@ template<typename T>
 concept HasLineHorizontal = requires {
     requires std::is_same_v<
         decltype(&T::lineHorizontal),
-        auto (T::*)(int16_t, int16_t, int16_t, uint16_t) -> void
+        auto (T::*)(int32_t, int32_t, int32_t, uint16_t) -> void
         >;
 };
 
@@ -46,7 +46,7 @@ template<typename T>
 concept HasLineVertical = requires {
     requires std::is_same_v<
         decltype(&T::lineVertical),
-        auto (T::*)(int16_t, int16_t, int16_t, uint16_t) -> void
+        auto (T::*)(int32_t, int32_t, int32_t, uint16_t) -> void
         >;
 };
 
@@ -54,7 +54,7 @@ template<typename T>
 concept HasTriangle = requires {
     requires std::is_same_v<
         decltype(&T::triangle),
-        auto (T::*)(int16_t, int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) -> void
+        auto (T::*)(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint16_t) -> void
         >;
 };
 
@@ -62,7 +62,7 @@ template<typename T>
 concept HasQuad = requires {
     requires std::is_same_v<
         decltype(&T::quad),
-        auto (T::*)(int16_t, int16_t, int16_t, int16_t, int16_t, int16_t, int16_t, int16_t, uint16_t) -> void
+        auto (T::*)(int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint16_t) -> void
         >;
 };
 
@@ -119,7 +119,7 @@ public:
         static_assert(IsVertexFunction<VERTEX_FUNCTION>,
                       "CRITICAL: The provided VERTEX_FUNCTION template parameter must override operator()(vec3&).");
         static_assert(HasPlot<Derived>,
-                      "CRITICAL: Your derived platform renderer class must implement void plot(int16_t x, int16_t y, uint16_t color).");
+                      "CRITICAL: Your derived platform renderer class must implement void plot(int32_t x, int32_t y, uint32_t color).");
     }
     ~BaseContext() = default;
 
@@ -128,12 +128,12 @@ public:
     BaseContext(BaseContext&&) = delete;
     auto operator = (BaseContext&&) = delete;
 
-    auto plot(int16_t x, int16_t y, Color color) -> void
+    auto plot(int32_t x, int32_t y, Color color) -> void
     {
         derived().plot(x, y, color);
     }
 
-    auto line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, Color color) -> void
+    auto line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, Color color) -> void
     {
         if constexpr (HasLine<Derived>) {
             derived().line(x0, y0, x1, y1, color);
@@ -192,7 +192,7 @@ public:
         }
     }
 
-    auto lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color) -> void
+    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, Color color) -> void
     {
         if constexpr (HasLineHorizontal<Derived>)
         {
@@ -204,7 +204,7 @@ public:
         }
     }
 
-     auto lineVertical(int16_t x0, int16_t y0, int16_t y1, uint16_t color) -> void
+     auto lineVertical(int32_t x0, int32_t y0, int32_t y1, Color color) -> void
     {
          if constexpr (HasLineVertical<Derived>) {
              derived().lineVertical(x0, y0, y1, color);
@@ -215,113 +215,86 @@ public:
          }
     }
 
-    //use extra pixel/s to fill gaps?
-    auto triangle(int16_t x0, int16_t y0,
-                  int16_t x1, int16_t y1,
-                  int16_t x2, int16_t y2,
-                  uint16_t color) -> void
+
+
+    auto triangle(int32_t x0, int32_t y0,
+                  int32_t x1, int32_t y1,
+                  int32_t x2, int32_t y2,
+                  Color color) -> void
     {
-        struct V { int16_t x, y; };
-        V v0{ x0, y0 }, v1{ x1, y1 }, v2{ x2, y2 };
 
-        // Sort vertices by y ascending
-        if (v1.y < v0.y) std::swap(v0, v1);
-        if (v2.y < v1.y) std::swap(v1, v2);
-        if (v1.y < v0.y) std::swap(v0, v1);
-
-        // If no vertical extent, draw single horizontal span
-        if (v0.y == v2.y) {
-            int16_t xmin = std::min({ v0.x, v1.x, v2.x });
-            int16_t xmax = std::max({ v0.x, v1.x, v2.x });
-            lineHorizontal(xmin, v0.y, xmax, color);
-            return;
-        }
-
-        // Edge walker: produces an integer x for each scanline y in [y0, y_end)
         struct EdgeWalker {
-            int32_t x;      // current x for current y
-            int32_t dx;     // abs(delta x)
-            int32_t dy;     // delta y (positive)
-            int32_t sx;     // sign of delta x
-            int32_t err;    // error accumulator
-            int16_t y;      // current y
-            int16_t y_end;  // end y (stop when y == y_end)
+            int32_t x, xStep, errStep, err, dy;
 
-            void init(int16_t x0, int16_t y0, int16_t x1, int16_t y1) {
-                x = x0;
-                int32_t ddx = int32_t(x1) - int32_t(x0);
-                dx = ddx >= 0 ? ddx : -ddx;
-                sx = (ddx >= 0) ? 1 : -1;
-                dy = int32_t(y1) - int32_t(y0);
-                if (dy < 0) dy = 0; // we only use walkers with y1 >= y0
+            void init(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+                dy      = y1 - y0;   // > 0, guaranteed by caller
+                int32_t dx = x1 - x0;
+                xStep   = dx / dy;   // the only division -- once per edge
+                errStep = dx % dy;   // remainder, same sign as dx
+                x   = x0;
                 err = 0;
-                y = y0;
-                y_end = y1;
             }
 
-            // Return current x for the current scanline y.
-            int32_t currentX() const { return x; }
-
-            // Advance walker to the next scanline (increment y by 1).
-            // After calling advance, y is incremented (or set to y_end if dy==0).
-            void advance() {
-                if (y >= y_end) return; // already finished
-                // If the edge has zero vertical span, jump to end.
-                if (dy == 0) {
-                    y = y_end;
-                    return;
-                }
-                // Standard Bresenham-like vertical stepping:
-                // err += dx; while (err >= dy) { x += sx; err -= dy; }
-                err += dx;
-                // Use while loop to handle steep slopes where dx >> dy without division.
-                while (err >= dy) {
-                    x += sx;
-                    err -= dy;
-                }
-                ++y;
+            inline void step() {
+                x   += xStep;
+                err += errStep;
+                if (errStep >= 0) { if (err >= dy)  { err -= dy; ++x; } }
+                else              { if (err <= -dy) { err += dy; --x; } }
             }
-
-            // Whether walker still has a valid x for the current y (y < y_end)
-            bool active() const { return y < y_end; }
         };
 
-        EdgeWalker e_long;   // v0 -> v2
-        EdgeWalker e_top;    // v0 -> v1
-        EdgeWalker e_bot;    // v1 -> v2
+        if (y0 > y1) { std::swap(x0, x1); std::swap(y0, y1); }
+        if (y1 > y2) { std::swap(x1, x2); std::swap(y1, y2); }
+        if (y0 > y1) { std::swap(x0, x1); std::swap(y0, y1); }
 
-        e_long.init(v0.x, v0.y, v2.x, v2.y);
-        e_top.init(v0.x, v0.y, v1.x, v1.y);
-        e_bot.init(v1.x, v1.y, v2.x, v2.y);
+        if (y2 <= viewport_y_ || y0 >= viewport_height_) return; // outside viewport, vertically
+        if (y0 == y2) return;                                // zero height, zero area
 
-        // Iterate scanlines from top to bottom (y in [v0.y, v2.y) )
-        for (int16_t y = v0.y; y < v2.y; ++y) {
-            // Get x on long edge for this scanline if active; otherwise clamp to endpoint x.
-            int32_t xl = e_long.active() ? e_long.currentX() : e_long.x;
+        int32_t xmin = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
+        int32_t xmax = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+        if (xmax < viewport_x_ || xmin >= viewport_width_) return; // outside viewport, horizontally
 
-            // Choose which short edge to sample for this scanline:
-            // - upper part: use top edge for y in [v0.y, v1.y)
-            // - lower part: use bottom edge for y in [v1.y, v2.y)
-            int32_t xr;
-            if (y < v1.y) {
-                // If top edge has zero height (v0.y == v1.y), use v1.x directly.
-                xr = e_top.active() ? e_top.currentX() : e_top.x;
-            } else {
-                xr = e_bot.active() ? e_bot.currentX() : e_bot.x;
+
+        int32_t cross = (int32_t)(x2 - x0) * (y1 - y0) - (int32_t)(y2 - y0) * (x1 - x0);
+        bool longIsLeft = cross < 0;
+
+        EdgeWalker longEdge;
+        longEdge.init(x0, y0, x2, y2);
+
+        EdgeWalker shortEdge;
+        bool inTopHalf = (y0 != y1);
+        if (inTopHalf) shortEdge.init(x0, y0, x1, y1);
+        else           shortEdge.init(x1, y1, x2, y2);
+
+        int yEnd = y2 < viewport_height_ ? y2 : viewport_height_;
+
+        for (int y = y0; y < yEnd; ++y) {
+            if (y >= viewport_y_) {
+                int32_t xa = longEdge.x, xb = shortEdge.x;
+                int32_t xl = longIsLeft ? xa : xb;
+                int32_t xr = longIsLeft ? xb : xa;
+                if (xl < viewport_x_) xl = viewport_x_;
+                if (xr > viewport_width_) xr = viewport_width_;
+                if (xl < xr) {
+                    lineHorizontal((int32_t)xl, (int32_t)y, (int32_t)(xr - 1), color);
+                }
             }
 
-            // Determine left/right and draw inclusive horizontal span.
-            int16_t xleft  = int16_t(std::min(xl, xr));
-            int16_t xright = int16_t(std::max(xl, xr));
-            lineHorizontal(xleft, y, xright, color);
+            longEdge.step();
+            shortEdge.step();
 
-            // Advance walkers for next scanline
-            e_long.advance();
-            if (y < v1.y) e_top.advance(); else e_bot.advance();
+            if (inTopHalf && (y + 1) == y1) {
+                inTopHalf = false;
+                if (y1 != y2) shortEdge.init(x1, y1, x2, y2);
+            }
         }
     }
 
-    auto quad(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t x3, int16_t y3, uint16_t color) -> void
+
+
+
+
+    auto quad(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t x3, int32_t y3, Color color) -> void
     {
         if constexpr (HasQuad<Derived>)
         {
@@ -361,12 +334,16 @@ public:
         color_pointer_ = cp;
     }
 
-    auto setViewPort(int16_t const w, int16_t const h) -> void
+    auto setViewPort(int32_t const x, int32_t const y, int32_t const w, int32_t const h) -> void
     {
+        viewport_x_ = x;
+        viewport_y_ = y;
         viewport_width_ = w;
         viewport_height_ = h;
-        viewport_width_fx_ = static_cast<fixed32>(w);
-        viewport_height_fx_ = static_cast<fixed32>(h);
+        viewport_x_fx_ = x;
+        viewport_y_fx_ = y;
+        viewport_width_fx_ = w;
+        viewport_height_fx_ = h;
         //aspect_ratio_ = 1.0_fx / (viewport_width_fx_ / viewport_height_fx_);
         aspect_ratio_ = 1.0_fx / (viewport_width_fx_ / viewport_height_fx_);
     }
@@ -470,25 +447,38 @@ public:
                 i = i + 1;;
                 col = col + 2;
             }
-            else if(current_draw_type_ == DrawType::Triangles)
+            if (current_draw_type_ == DrawType::Triangles)
             {
-                    auto outVerts = clip_polygon_near_z<3>(std::span<vec3,3>(&working_vertex_buffer_[i],3));
-                    for(auto k = 0ul; k < outVerts.size(); k = k + 3)
+                vec3& v0 = working_vertex_buffer_[i];
+                vec3& v1 = working_vertex_buffer_[i+1];
+                vec3& v2 = working_vertex_buffer_[i+2];
+
+                if (auto res = clip_triangle_trivial(v0, v1, v2); res == ClipResult::Accept)
+                {
+                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2);
+                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2);
+                    if (is_cull_passing(v0, v1, v2))
                     {
-                        if(true ||is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
+                        triangle(fixed32::round(v0.x), fixed32::round(v0.y),
+                                 fixed32::round(v1.x), fixed32::round(v1.y),
+                                 fixed32::round(v2.x), fixed32::round(v2.y), ccs);
+                    }
+                }
+                else if (res == ClipResult::Partial)
+                {
+                    auto outVerts = clip_triangle_accurate(v0, v1, v2);
+                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
+                    {
+                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
+                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
+                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
                         {
-                        project_to_ndc(outVerts[k+0]);project_to_ndc(outVerts[k+1]);project_to_ndc(outVerts[k+2]);
-                        if(is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
-                        {
-                        to_screen_space(outVerts[k+0]);to_screen_space(outVerts[k+1]);to_screen_space(outVerts[k+2]);
-                        triangle(fixed32::round(outVerts[k+0].x), fixed32::round(outVerts[k+0].y),
-                                 fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
-                                 fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y),ccs);
-                        }
+                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
+                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
+                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
                         }
                     }
-
-
+                }
                 i = i + 2;
                 col = col + 3;
             }
@@ -503,30 +493,44 @@ public:
                 i = i + 2;
                 col = col + 3;
             }
-            else if(current_draw_type_ == DrawType::Quads)
+            else if (current_draw_type_ == DrawType::Quads)
             {
-                    auto outVerts = clip_polygon_near_z<4>(std::span<vec3,4>(&working_vertex_buffer_[i],4));
-                    for(auto k = 0ul; k < outVerts.size(); k = k + 4)
+                vec3& v0 = working_vertex_buffer_[i];
+                vec3& v1 = working_vertex_buffer_[i+1];
+                vec3& v2 = working_vertex_buffer_[i+2];
+                vec3& v3 = working_vertex_buffer_[i+3];
+
+                if (auto res = clip_quad_trivial(v0, v1, v2, v3); res == ClipResult::Accept)
+                {
+                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2); project_to_ndc(v3);
+                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2); to_screen_space(v3);
+
+                    if(is_cull_passing(v0,v1,v2))
                     {
-                        if(true ||is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
-                        {
-                        project_to_ndc(outVerts[k+0]);project_to_ndc(outVerts[k+1]);project_to_ndc(outVerts[k+2]);project_to_ndc(outVerts[k+3]);
-                        if(is_cull_passing(outVerts[k+0],outVerts[k+1],outVerts[k+2]))
-                        {
-                            to_screen_space(outVerts[k+0]);to_screen_space(outVerts[k+1]);to_screen_space(outVerts[k+2]);to_screen_space(outVerts[k+3]);
-                            quad(static_cast<int16_t>(outVerts[k+0].x),static_cast<int16_t>(outVerts[k+0].y),
-                                 static_cast<int16_t>(outVerts[k+1].x),static_cast<int16_t>(outVerts[k+1].y),
-                                 static_cast<int16_t>(outVerts[k+2].x),static_cast<int16_t>(outVerts[k+2].y),
-                                 static_cast<int16_t>(outVerts[k+3].x),static_cast<int16_t>(outVerts[k+3].y),ccs);
-                        }
-                        }
-
-
+                        quad(fixed32::round(v0.x), fixed32::round(v0.y),
+                            fixed32::round(v1.x), fixed32::round(v1.y),
+                            fixed32::round(v2.x), fixed32::round(v2.y),
+                            fixed32::round(v3.x), fixed32::round(v3.y), ccs);
                     }
-
-
-                i = i + 3;
-                col = col + 4;
+                }
+                else if (res == ClipResult::Partial)
+                {
+                    // NOTE: Accurate quad clipping returns TRIANGLES. We iterate by 3, not 4!
+                    auto outVerts = clip_quad_accurate(v0, v1, v2, v3);
+                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
+                    {
+                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
+                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
+                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
+                        {
+                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
+                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
+                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
+                        }
+                    }
+                }
+                i += 3;
+                col += 4;
             }
         }
 
@@ -561,44 +565,7 @@ protected:
         return false;
     }
 
-     auto clip_triangle_near(vec3 const & v0, vec3 const & v1, vec3 const & v2) -> std::inplace_vector<vec3, 8>
-    {
-        //trivial pass
-        if(is_point_inside_near(v0) && is_point_inside_near(v1) && is_point_inside_near(v2))
-        {
-            return {v0,v1,v2};
-        }
-
-        //trivial fail
-        else if((!is_point_inside_near(v0)) && (!is_point_inside_near(v1)) && (!is_point_inside_near(v2)))
-        {
-            return {};
-        }
-
-        //clamp if partial
-        return {};
-
-    }
-
-     auto clip_quad_near(vec3 const & v0, vec3 const & v1, vec3 const & v2, vec3 const & v3) -> std::inplace_vector<vec3, 8>
-    {
-        //trivial pass
-        if(is_point_inside_near(v0) && is_point_inside_near(v1) && is_point_inside_near(v2) && (is_point_inside_near(v3)))
-        {
-            return {v0,v1,v2,v3};
-        }
-
-        //trivial fail
-        else if((!is_point_inside_near(v0)) && (!is_point_inside_near(v1)) && (!is_point_inside_near(v2)) && (!is_point_inside_near(v3)))
-        {
-            return {};
-        }
-
-        //clamp if partial
-        return {};
-    }
-
-     auto clip_horizontal_line_screen(int16_t& x0, int16_t& y0, int16_t& x1) -> int32_t
+     auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
         if (y0 >= viewport_height_) { return 0; }    // below screen: nothing further can be visible
@@ -610,59 +577,7 @@ protected:
         return 1;
     }
 
-    template <int N> requires (N == 3 || N == 4)
-     [[nodiscard]] auto clip_polygon_near_z(std::span<vec3 const, N> const verts) -> std::inplace_vector<vec3, ((5 - 2 + (N - 2) - 1) / (N - 2)) * N>
-    {
 
-        std::inplace_vector<vec3, 5> clipped;
-
-        for (std::size_t i = 0; i < verts.size(); ++i)
-        {
-            std::size_t next_i = i + 1 == verts.size() ? 0 : i + 1;
-            vec3 const& current = verts[i];
-            vec3 const& next = verts[next_i];
-
-            const bool currentIn = current.z >= near_z_;
-            const bool nextIn = next.z >= near_z_;
-
-            if (currentIn)
-            {
-                clipped.emplace_back(current);
-            }
-
-            if (currentIn != nextIn)
-            {
-                const fixed32 t = (near_z_ - current.z) / (next.z - current.z);
-                clipped.emplace_back( current.x + (next.x - current.x) * t, current.y + (next.y - current.y) * t, current.z + (next.z - current.z) * t );
-            }
-        }
-
-        std::inplace_vector<vec3, ((5 - 2 + (N - 2) - 1) / (N - 2)) * N> output;
-
-        const std::size_t m = clipped.size();
-
-        if constexpr(N == 3)
-        {
-            for (std::size_t i = 1; i + 1 < m; ++i)
-            {
-                output.push_back(clipped[0]);
-                output.push_back(clipped[i]);
-                output.push_back(clipped[i + 1]);
-            }
-        }
-        else if constexpr (N == 4)
-        {
-            for (std::size_t i = 1; i + 1 < m; i += 2)
-            {
-                output.push_back(clipped[0]);
-                output.push_back(clipped[i]);
-                output.push_back(clipped[i + 1]);
-                output.push_back(i + 2 < m ? clipped[i + 2] : clipped[i + 1]);
-            }
-        }
-
-        return output;
-    }
 
      auto project_to_ndc(vec3& p) -> void
     {
@@ -673,33 +588,152 @@ protected:
         p.y = p.y * invZ(p.z);
     }
 
-     [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
+    [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
     {
         if (cull_ == FaceCullMode::None) { return true; }
-        else if (cull_ == FaceCullMode::All) { return false; }
-        else
-        {
-            const auto ab_x = v1.x - v0.x;
-            const auto ab_y = v1.y - v0.y;
-            const auto ac_x = v2.x - v1.x;
-            const auto ac_y = v2.y - v1.y;
-            const auto nz = ab_x * ac_y - ab_y * ac_x;
+        if (cull_ == FaceCullMode::All) { return false; }
 
-            if (cull_ == FaceCullMode::Back) [[likely]] { return nz > 0.0_fx; }
-            else if (cull_ == FaceCullMode::Front) { return nz < 0.0_fx; }
+        // Edge vectors sharing vertex v0
+        const auto ab_x = v1.x - v0.x;
+        const auto ab_y = v1.y - v0.y;
+        const auto ac_x = v2.x - v0.x; // Fixed: using v2 - v0 (AC) instead of v2 - v1 (BC)
+        const auto ac_y = v2.y - v0.y;
+
+        // 2D cross product determinant (Z-component of AB x AC)
+        const auto nz = ab_x * ac_y - ab_y * ac_x;
+
+        if (cull_ == FaceCullMode::Back) [[likely]] {
+            return nz < 0.0_fx; // Adjust to < 0.0_fx if your geometry uses Clockwise (CW) front faces
         }
+        else if (cull_ == FaceCullMode::Front) {
+            return nz > 0.0_fx;
+        }
+
         return false;
     }
 
-     auto to_screen_space(vec3& p) -> void
+    auto to_screen_space(vec3& p) -> void
     {
         // Map from [-1, +1] → [0, 1]
         fixed32 sx = (p.x + 1.0_fx).halved();
         fixed32 sy = (1.0_fx - p.y).halved();
 
         // Scale to viewport
-        p.x = sx * viewport_width_fx_ - 1.0_fx;
-        p.y = sy * viewport_height_fx_ - 1.0_fx;
+        p.x = sx * (viewport_width_fx_ + viewport_x_fx_);
+        p.y = sy * viewport_height_fx_ + viewport_y_fx_;
+    }
+
+
+    enum class ClipResult
+    {
+        Accept,
+        Reject,
+        Partial
+    };
+
+    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
+    {
+        bool in0 = (v0.z >= near_z_);
+        bool in1 = (v1.z >= near_z_);
+        bool in2 = (v2.z >= near_z_);
+
+        if (in0 && in1 && in2) return ClipResult::Accept;
+        if (!in0 && !in1 && !in2) return ClipResult::Reject;
+        return ClipResult::Partial;
+    }
+
+    [[nodiscard]] auto clip_triangle_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
+    {
+        // Max 5 vertices after clipping a triangle against 1 plane.
+        std::inplace_vector<vec3, 5> clipped;
+
+        // Local lambda allows the compiler to fully unroll and inline
+        // the edge processing without loop overhead.
+        auto process_edge = [&](vec3 const& curr, vec3 const& next) {
+            bool currIn = (curr.z >= near_z_);
+            bool nextIn = (next.z >= near_z_);
+
+            if (currIn) {
+                clipped.emplace_back(curr);
+            }
+            if (currIn != nextIn) {
+                fixed32 t = (near_z_ - curr.z) / (next.z - curr.z);
+                clipped.emplace_back(
+                    curr.x + (next.x - curr.x) * t,
+                    curr.y + (next.y - curr.y) * t,
+                    near_z_ // GBA OPTIMIZATION: Z is exactly the near plane. Saves MUL + ADD.
+                    );
+            }
+        };
+
+        // Explicitly unrolled edges for maximum ARM7TDMI speed
+        process_edge(v0, v1);
+        process_edge(v1, v2);
+        process_edge(v2, v0);
+
+        // Fan triangulation: Safely converts 3, 4, or 5 vertex convex polygons into triangles.
+        // Max output: 5 vertices = 3 triangles = 9 vertices.
+        std::inplace_vector<vec3, 9> output;
+        size_t m = clipped.size();
+        for (size_t i = 1; i + 1 < m; ++i) {
+            output.emplace_back(clipped[0]);
+            output.emplace_back(clipped[i]);
+            output.emplace_back(clipped[i + 1]);
+        }
+
+        return output;
+    }
+
+    [[nodiscard]] auto clip_quad_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> ClipResult
+    {
+        bool in0 = (v0.z >= near_z_);
+        bool in1 = (v1.z >= near_z_);
+        bool in2 = (v2.z >= near_z_);
+        bool in3 = (v3.z >= near_z_);
+
+        if (in0 && in1 && in2 && in3) return ClipResult::Accept;
+        if (!in0 && !in1 && !in2 && !in3) return ClipResult::Reject;
+        return ClipResult::Partial;
+    }
+
+    [[nodiscard]] auto clip_quad_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> std::inplace_vector<vec3, 9>
+    {
+        // Max 5 vertices after clipping a quad against 1 plane.
+        std::inplace_vector<vec3, 5> clipped;
+
+        auto process_edge = [&](vec3 const& curr, vec3 const& next) {
+            bool currIn = (curr.z >= near_z_);
+            bool nextIn = (next.z >= near_z_);
+
+            if (currIn) {
+                clipped.emplace_back(curr);
+            }
+            if (currIn != nextIn) {
+                fixed32 t = (near_z_ - curr.z) / (next.z - curr.z);
+                clipped.emplace_back(
+                    curr.x + (next.x - curr.x) * t,
+                    curr.y + (next.y - curr.y) * t,
+                    near_z_ // GBA OPTIMIZATION: Z is exactly the near plane.
+                    );
+            }
+        };
+
+        // Explicitly unrolled edges
+        process_edge(v0, v1);
+        process_edge(v1, v2);
+        process_edge(v2, v3);
+        process_edge(v3, v0);
+
+        // Fan triangulation: Converts the clipped quad (now 3, 4, or 5 vertices) into triangles.
+        std::inplace_vector<vec3, 9> output;
+        size_t m = clipped.size();
+        for (size_t i = 1; i + 1 < m; ++i) {
+            output.emplace_back(clipped[0]);
+            output.emplace_back(clipped[i]);
+            output.emplace_back(clipped[i + 1]);
+        }
+
+        return output;
     }
 
 
@@ -712,8 +746,12 @@ protected:
     uint16_t color_stride_{0};
     DrawType current_draw_type_{DrawType::Points};
 
-    int16_t viewport_width_{0};
-    int16_t viewport_height_{0};
+    int32_t viewport_x_{0};
+    int32_t viewport_y_{0};
+    fixed32 viewport_x_fx_{0.0_fx};
+    fixed32 viewport_y_fx_{0.0_fx};
+    int32_t viewport_width_{0};
+    int32_t viewport_height_{0};
     fixed32 viewport_width_fx_{0.0_fx};
     fixed32 viewport_height_fx_{0.0_fx};
     fixed32 aspect_ratio_{0_fx};
