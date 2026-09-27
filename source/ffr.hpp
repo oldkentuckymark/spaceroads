@@ -203,13 +203,14 @@ public:
 
      auto lineVertical(int32_t x0, int32_t y0, int32_t y1, Color color) -> void
     {
-         if constexpr (HasLineVertical<Derived>) {
-             derived().lineVertical(x0, y0, y1, color);
-         } else {
-             // Default vertical plotting loop
-
-        line(x0, y0, x0, y1, color);
-         }
+         if constexpr (HasLineVertical<Derived>)
+        {
+            derived().lineVertical(x0, y0, y1, color);
+        }
+         else
+         {
+            line(x0, y0, x0, y1, color);
+        }
     }
 
 
@@ -244,12 +245,12 @@ public:
         if (y1 > y2) { std::swap(x1, x2); std::swap(y1, y2); }
         if (y0 > y1) { std::swap(x0, x1); std::swap(y0, y1); }
 
-        if (y2 <= viewport_y_ || y0 >= viewport_height_) return; // outside viewport, vertically
+        if (y2 <= 0 || y0 >= render_height_) return; // outside viewport, vertically
         if (y0 == y2) return;                                // zero height, zero area
 
         int32_t xmin = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
         int32_t xmax = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
-        if (xmax < viewport_x_ || xmin >= viewport_width_) return; // outside viewport, horizontally
+        if (xmax < 0 || xmin >= render_width_) return; // outside viewport, horizontally
 
 
         int32_t cross = (int32_t)(x2 - x0) * (y1 - y0) - (int32_t)(y2 - y0) * (x1 - x0);
@@ -263,15 +264,15 @@ public:
         if (inTopHalf) shortEdge.init(x0, y0, x1, y1);
         else           shortEdge.init(x1, y1, x2, y2);
 
-        int yEnd = y2 < viewport_height_ ? y2 : viewport_height_;
+        int yEnd = y2 < render_height_ ? y2 : render_height_;
 
         for (int y = y0; y < yEnd; ++y) {
-            if (y >= viewport_y_) {
+            if (y >= 0) {
                 int32_t xa = longEdge.x, xb = shortEdge.x;
                 int32_t xl = longIsLeft ? xa : xb;
                 int32_t xr = longIsLeft ? xb : xa;
-                if (xl < viewport_x_) xl = viewport_x_;
-                if (xr > viewport_width_) xr = viewport_width_;
+                if (xl < 0) xl = 0;
+                if (xr > render_width_) xr = render_width_;
                 if (xl < xr) {
                     lineHorizontal((int32_t)xl, (int32_t)y, (int32_t)(xr - 1), color);
                 }
@@ -331,16 +332,12 @@ public:
         color_pointer_ = cp;
     }
 
-    auto setViewPort(int32_t const x, int32_t const y, int32_t const w, int32_t const h) -> void
+    auto setScreenSize(int32_t const w, int32_t const h) -> void
     {
-        viewport_x_ = x;
-        viewport_y_ = y;
-        viewport_width_ = w;
-        viewport_height_ = h;
-        viewport_x_fx_ = x;
-        viewport_y_fx_ = y;
-        viewport_width_fx_ = w;
-        viewport_height_fx_ = h;
+        render_width_ = w;
+        render_height_ = h;
+        render_width_fx_ = w;
+        render_height_fx_ = h;
     }
 
      [[nodiscard]] auto getVertexFunction() -> VERTEX_FUNCTION&
@@ -478,30 +475,25 @@ protected:
     auto clip_line_near(vec3& v0, vec3& v1) -> bool
     {
         //trivial pass
-        if(is_point_inside_near(v0) && is_point_inside_near(v1))
-        {
             return true;
-        }
 
-        //trivial fail
-        else if((!is_point_inside_near(v0)) && (!is_point_inside_near(v1)))
-        {
+        //trivial fai
             return false;
-        }
+
 
         //clamp if partial
         return false;
     }
 
-    [[nodiscard]] auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
+    [[nodiscard]] auto clip_horizontal_line_screen(int32_t x0, int32_t y0, int32_t x1) -> int32_t
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
-        if (y0 >= viewport_height_) { return 0; }    // below screen: nothing further can be visible
+        if (y0 >= render_height_) { return 0; }    // below screen: nothing further can be visible
         util::order(x0,x1);
         if (x0 < 0 && x1 < 0)      { return -1; }
-        if (x0 >= viewport_width_ && x1 >= viewport_width_) { return -1; }
+        if (x0 >= render_width_ && x1 >= render_width_) { return -1; }
         if(x0 < 0) {x0 = 0;}
-        if(x1 >= viewport_width_) {x1 = viewport_width_ - 1;}
+        if(x1 >= render_width_) {x1 = render_width_ - 1;}
         return 1;
     }
 
@@ -537,9 +529,9 @@ protected:
         fixed32 sx = (p.x + 1.0_fx).halved();
         fixed32 sy = (1.0_fx - p.y).halved();
 
-        // Scale to viewport
-        p.x = sx * ( + viewport_x_fx_);
-        p.y = sy * viewport_height_fx_ + viewport_y_fx_;
+        // Scale to viewport [0, width - 1] and [0, height - 1]
+        p.x = sx * (screen_width_fx_ - 1.0_fx);
+        p.y = sy * (screen_height_fx_ - 1.0_fx);
     }
 
 
@@ -665,17 +657,11 @@ protected:
     uint16_t color_stride_{0};
     DrawType current_draw_type_{DrawType::Points};
 
-    int32_t screen_width_{0};
-    int32_t screen_height_{0};
+    int32_t render_width_{0};
+    int32_t render_height_{0};
+    fixed32 render_width_fx_{0.0_fx};
+    fixed32 render_height_fx_{0.0_fx};
 
-    int32_t viewport_x_{0};
-    int32_t viewport_y_{0};
-    fixed32 viewport_x_fx_{0.0_fx};
-    fixed32 viewport_y_fx_{0.0_fx};
-    int32_t viewport_width_{0};
-    int32_t viewport_height_{0};
-    fixed32 viewport_width_fx_{0.0_fx};
-    fixed32 viewport_height_fx_{0.0_fx};
     fixed32 aspect_ratio_{0.0_fx};
     fixed32 near_z_{0.0_fx};
 

@@ -65,7 +65,7 @@ public:
         tex = SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, RENDER_WIDTH,RENDER_HEIGHT);
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetRenderTarget(ren,tex);
-        setViewPort(0,0, RENDER_WIDTH,RENDER_HEIGHT);
+        setScreenSize(RENDER_WIDTH,RENDER_HEIGHT);
         setNearZ(1.0_fx);
     }
 
