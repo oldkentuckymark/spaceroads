@@ -212,8 +212,7 @@ public:
 
     [[nodiscard]] constexpr static auto round(fixed32 const v) -> int16_t
     {
-        int32_t const offset = (v.data >= 0) ? 0x8000 : 0x7FFF;
-        return static_cast<int16_t>((v.data + offset) >> FIX_SHIFT);
+        return static_cast<int16_t>((v.data + 0x8000) >> FIX_SHIFT);
     }
 
     [[nodiscard]] constexpr static auto floor(fixed32 const v) -> int16_t
@@ -247,7 +246,7 @@ namespace ffm
 
 constexpr double TAUF = 6.28318530;
 constexpr fixed32 TAU = 6.28318530_fx;
-constexpr size_t GAMDEG_IN_CIRCLE = 256; //must be power of 2
+constexpr size_t GAMDEG_IN_CIRCLE = 256;
 constexpr fixed32 RAD_TO_GAMDEG = fixed32(GAMDEG_IN_CIRCLE / TAUF);
 constexpr fixed32 GAMDEG_TO_RAD = static_cast<fixed32>(TAUF / GAMDEG_IN_CIRCLE);
 

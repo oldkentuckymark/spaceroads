@@ -107,9 +107,6 @@ enum class FaceCullMode : int32_t
 template<class Derived, class VERTEX_FUNCTION>
 class BaseContext
 {
-
-    static constexpr size_t MAX_VERTS{256};
-
 private:
     constexpr Derived& derived() { return static_cast<Derived&>(*this); }
 
@@ -344,8 +341,6 @@ public:
         viewport_y_fx_ = y;
         viewport_width_fx_ = w;
         viewport_height_fx_ = h;
-        //aspect_ratio_ = 1.0_fx / (viewport_width_fx_ / viewport_height_fx_);
-        aspect_ratio_ = 1.0_fx / (viewport_width_fx_ / viewport_height_fx_);
     }
 
      [[nodiscard]] auto getVertexFunction() -> VERTEX_FUNCTION&
@@ -363,176 +358,104 @@ public:
         near_z_ = z;
     }
 
-
+    auto setAspectRatio(fixed32 const ar) -> void
+    {
+        aspect_ratio_ = ar;
+    }
 
 
      auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
     {
-        current_draw_type_ = dt;
-        working_vertex_buffer_.clear();
-        working_color_buffer_.clear();
+        // else if(vertex_size_ == 3)
+        // {
+        //     if(vs == 0) {vs = sizeof(vec3);}
+        //     for(auto const * p = vp + (first*vs); p < vp + ((first+count)*vs); p = p + vs)
+        //     {
+        //         working_vertex_buffer_.push_back( {reinterpret_cast<vec3 const*>(p)[0]} );
+        //     }
 
-        std::byte const * vp = reinterpret_cast<std::byte const *>(vertex_pointer_);
-        std::byte const * cp = reinterpret_cast<std::byte const *>(color_pointer_);
-        auto vs = vertex_stride_;
-        auto cs = color_stride_;
+        // }
 
-        if(vertex_size_ == 2)
+        vec3 workingVerts[4];
+        vec3& wv0{workingVerts[0]};
+        vec3& wv1{workingVerts[1]};
+        vec3& wv2{workingVerts[2]};
+        vec3& wv3{workingVerts[3]};
+
+        uint16_t workingColors[4];
+        uint16_t& wc0{workingColors[0]};
+        uint16_t& wc1{workingColors[1]};
+        uint16_t& wc2{workingColors[2]};
+        uint16_t& wc3{workingColors[3]};
+
+
+        std::byte const * vertPtr = reinterpret_cast<std::byte const *>(vertex_pointer_);
+        std::byte const * colPtr = reinterpret_cast<std::byte const *>(color_pointer_);
+
+        auto vertStrideBytes = vertex_stride_;
+        auto colStrideBytes = color_stride_;
+        if(vertStrideBytes == 0) { vertStrideBytes = sizeof(fixed32)*vertex_size_; }
+        if(colStrideBytes == 0) { colStrideBytes = sizeof(uint16_t); }
+
+        auto const vertSize = vertex_size_;
+        auto const colSize = 1;
+        auto const vertSizeBytes = sizeof(fixed32)*vertex_size_;
+        auto const colSizeBytes = sizeof(fixed32);
+
+        constexpr uint32_t VERTS_PER_POINT = 1;
+        constexpr uint32_t VERTS_PER_LINE = 2;
+        constexpr uint32_t VERTS_PER_TRIANGLE = 3;
+        constexpr uint32_t VERTS_PER_QUAD = 4;
+
+        if(dt == DrawType::Points)
         {
-            if(vs == 0) {vs = sizeof(vec2);}
-            for(auto const * p = vp + (first*vs); p < vp + ((first+count)*vs); p = p + vs)
+            for(auto const* vp = vertPtr+(first*vertSizeBytes); vp < vertPtr+((first+count)*vertSizeBytes); vp = vp + vertStrideBytes)
             {
-                working_vertex_buffer_.push_back( {reinterpret_cast<vec2 const*>(p)->x,reinterpret_cast<vec2 const*>(p)->y,0.0_fx} );
-            }
-
-        }
-        else if(vertex_size_ == 3)
-        {
-            if(vs == 0) {vs = sizeof(vec3);}
-            for(auto const * p = vp + (first*vs); p < vp + ((first+count)*vs); p = p + vs)
-            {
-                working_vertex_buffer_.push_back( {reinterpret_cast<vec3 const*>(p)[0]} );
-            }
-
-        }
-
-        //gather colors into working buffer
-        if(color_pointer_ == nullptr)
-        {
-            for(auto i = 0; i < working_vertex_buffer_.size(); ++i)
-            {
-                working_color_buffer_.push_back(color_stride_);
-            }
-        }
-        else
-        {
-            if(color_stride_ == 0) {cs = sizeof(uint16_t);}
-            for(auto const * p = cp + (first*cs); p < cp + ((first+count)*cs); p = p + cs)
-            {
-                working_color_buffer_.push_back(reinterpret_cast<uint16_t const*>(p)[0]);
-            }
-
-        }
-
-
-        //vertex_pipeline_();
-
-        //run vertex function
-        for(uint32_t i = 0; i < working_vertex_buffer_.size(); ++i)
-        {
-            vf_(working_vertex_buffer_[i]);
-        }
-
-
-        size_t col = 0;
-        for(uint32_t i = 0; i < working_vertex_buffer_.size(); ++i)
-        {
-            uint16_t const & ccs{working_color_buffer_[col]};
-
-            if(current_draw_type_ == DrawType::Points)
-            {
-                vec3& cvs = working_vertex_buffer_[i];
-
-
-
-                col = col + 1;
-            }
-            else if(current_draw_type_ == DrawType::Lines)
-            {
-                vec3& p0{working_vertex_buffer_[i]};
-                vec3& p1{working_vertex_buffer_[i+1]};
-
-
-
-                i = i + 1;;
-                col = col + 2;
-            }
-            if (current_draw_type_ == DrawType::Triangles)
-            {
-                vec3& v0 = working_vertex_buffer_[i];
-                vec3& v1 = working_vertex_buffer_[i+1];
-                vec3& v2 = working_vertex_buffer_[i+2];
-
-                if (auto res = clip_triangle_trivial(v0, v1, v2); res == ClipResult::Accept)
+                //copy position data from vertex_pointer_ to working buffer
+                fixed32 const* vpf32 = reinterpret_cast<fixed32 const*>(vp);
+                fixed32* wvp = reinterpret_cast<fixed32*>(workingVerts);
+                for(auto i = 0ul; i < vertSize*VERTS_PER_POINT; ++i)
                 {
-                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2);
-                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2);
-                    if (is_cull_passing(v0, v1, v2))
-                    {
-                        triangle(fixed32::round(v0.x), fixed32::round(v0.y),
-                                 fixed32::round(v1.x), fixed32::round(v1.y),
-                                 fixed32::round(v2.x), fixed32::round(v2.y), ccs);
-                    }
+
+                    *wvp = *vpf32;
+                    ++vpf32;
+                    ++wvp;
                 }
-                else if (false && res == ClipResult::Partial)
-                {
-                    auto outVerts = clip_triangle_accurate(v0, v1, v2);
-                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
-                    {
-                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
-                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
-                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
-                        {
-                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
-                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
-                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
-                        }
-                    }
-                }
-                i = i + 2;
-                col = col + 3;
             }
-            else if(current_draw_type_ == DrawType::TrianglesWireFrame)
+
+            //copy color data from color_pointer_ to working buffer
+            for(auto const* cp = colPtr+(first+colSizeBytes); cp < colPtr+((first+count)*colSizeBytes); cp = cp + colSizeBytes)
             {
-                vec3& v0{working_vertex_buffer_[i]};
-                vec3& v1{working_vertex_buffer_[i+1]};
-                vec3& v2{working_vertex_buffer_[i+2]};
-
-
-
-                i = i + 2;
-                col = col + 3;
+                uint16_t const* cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                uint16_t* wcp = workingColors;
+                for(auto i = 0ul; i < colSize*VERTS_PER_POINT; ++i)
+                {
+                    *wcp = *cpus16;
+                    ++cpus16;
+                    ++wcp;
+                }
             }
-            else if (current_draw_type_ == DrawType::Quads)
+
+            //run vertex shader
+            vf_(wv0);
+
+            //clip near
+            if(clip_point_near(wv0))
             {
-                vec3& v0 = working_vertex_buffer_[i];
-                vec3& v1 = working_vertex_buffer_[i+1];
-                vec3& v2 = working_vertex_buffer_[i+2];
-                vec3& v3 = working_vertex_buffer_[i+3];
+                //project to ndc
+                project_to_ndc(wv0);
 
-                if (auto res = clip_quad_trivial(v0, v1, v2, v3); res == ClipResult::Accept)
-                {
-                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2); project_to_ndc(v3);
-                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2); to_screen_space(v3);
-
-                    if(is_cull_passing(v0,v1,v2))
-                    {
-                        quad(fixed32::round(v0.x), fixed32::round(v0.y),
-                            fixed32::round(v1.x), fixed32::round(v1.y),
-                            fixed32::round(v2.x), fixed32::round(v2.y),
-                            fixed32::round(v3.x), fixed32::round(v3.y), ccs);
-                    }
-                }
-                else if (false && res == ClipResult::Partial)
-                {
-                    // NOTE: Accurate quad clipping returns TRIANGLES. We iterate by 3, not 4!
-                    auto outVerts = clip_quad_accurate(v0, v1, v2, v3);
-                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
-                    {
-                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
-                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
-                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
-                        {
-                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
-                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
-                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
-                        }
-                    }
-                }
-                i += 3;
-                col += 4;
+                //map to screen
             }
+
+
+
+
+
+
         }
+
+
 
     }
 
@@ -541,13 +464,18 @@ public:
 
 protected:
 
-     auto is_point_inside_near(vec3 const & p) -> bool
+    auto clip_point_near(vec3 const & p) const -> bool
     {
-        return p.z > near_z_;
+        return p.z >= near_z_;
+    }
+
+    auto clip_point_ndc(vec3 const & p) -> bool
+    {
+
     }
 
 
-     auto clip_line_near(vec3& v0, vec3& v1) -> bool
+    auto clip_line_near(vec3& v0, vec3& v1) -> bool
     {
         //trivial pass
         if(is_point_inside_near(v0) && is_point_inside_near(v1))
@@ -565,7 +493,7 @@ protected:
         return false;
     }
 
-     auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
+    [[nodiscard]] auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
         if (y0 >= viewport_height_) { return 0; }    // below screen: nothing further can be visible
@@ -586,26 +514,19 @@ protected:
         p.y = p.y * invZ(p.z);
     }
 
-    [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
+    [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) const -> bool
     {
         if (cull_ == FaceCullMode::None) { return true; }
         if (cull_ == FaceCullMode::All) { return false; }
 
-        // Edge vectors sharing vertex v0
         const auto ab_x = v1.x - v0.x;
         const auto ab_y = v1.y - v0.y;
-        const auto ac_x = v2.x - v0.x; // Fixed: using v2 - v0 (AC) instead of v2 - v1 (BC)
+        const auto ac_x = v2.x - v0.x;
         const auto ac_y = v2.y - v0.y;
-
-        // 2D cross product determinant (Z-component of AB x AC)
         const auto nz = ab_x * ac_y - ab_y * ac_x;
 
-        if (cull_ == FaceCullMode::Back) [[likely]] {
-            return nz < 0.0_fx; // Adjust to < 0.0_fx if your geometry uses Clockwise (CW) front faces
-        }
-        else if (cull_ == FaceCullMode::Front) {
-            return nz > 0.0_fx;
-        }
+        if (cull_ == FaceCullMode::Back) [[likely]] { return nz < 0.0_fx; }
+        else if (cull_ == FaceCullMode::Front) { return nz > 0.0_fx; }
 
         return false;
     }
@@ -617,7 +538,7 @@ protected:
         fixed32 sy = (1.0_fx - p.y).halved();
 
         // Scale to viewport
-        p.x = sx * (viewport_width_fx_ + viewport_x_fx_);
+        p.x = sx * ( + viewport_x_fx_);
         p.y = sy * viewport_height_fx_ + viewport_y_fx_;
     }
 
@@ -744,6 +665,9 @@ protected:
     uint16_t color_stride_{0};
     DrawType current_draw_type_{DrawType::Points};
 
+    int32_t screen_width_{0};
+    int32_t screen_height_{0};
+
     int32_t viewport_x_{0};
     int32_t viewport_y_{0};
     fixed32 viewport_x_fx_{0.0_fx};
@@ -752,13 +676,8 @@ protected:
     int32_t viewport_height_{0};
     fixed32 viewport_width_fx_{0.0_fx};
     fixed32 viewport_height_fx_{0.0_fx};
-    fixed32 aspect_ratio_{0_fx};
+    fixed32 aspect_ratio_{0.0_fx};
     fixed32 near_z_{0.0_fx};
-
-    std::inplace_vector<vec3,MAX_VERTS> working_vertex_buffer_;
-    std::inplace_vector<uint16_t,MAX_VERTS> working_color_buffer_;
-    std::inplace_vector<vec3, 16> post_clip_verts1_;
-    std::inplace_vector<vec3, 16> post_clip_verts2_;
 
     FaceCullMode cull_{FaceCullMode::All};
 
