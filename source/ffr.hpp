@@ -420,32 +420,6 @@ public:
                 }
             }
 
-            //copy color data from color_pointer_ to working buffer
-            for(auto const* cp = colPtr+(first+colSizeBytes); cp < colPtr+((first+count)*colSizeBytes); cp = cp + colSizeBytes)
-            {
-                uint16_t const* cpus16 = reinterpret_cast<uint16_t const*>(cp);
-                uint16_t* wcp = workingColors;
-                for(auto i = 0ul; i < colSize*VERTS_PER_POINT; ++i)
-                {
-                    *wcp = *cpus16;
-                    ++cpus16;
-                    ++wcp;
-                }
-            }
-
-            //run vertex shader
-            vf_(wv0);
-
-            //clip near
-            if(clip_point_near(wv0))
-            {
-                //project to ndc
-                project_to_ndc(wv0);
-
-                //map to screen
-            }
-
-
 
 
 
@@ -468,7 +442,7 @@ protected:
 
     auto clip_point_ndc(vec3 const & p) -> bool
     {
-
+        return p.x >= 0.0_fx && p.x <= 1.0_fx && p.y >= 0.0_fx && p.y <= 1.0_fx;
     }
 
 
@@ -530,8 +504,8 @@ protected:
         fixed32 sy = (1.0_fx - p.y).halved();
 
         // Scale to viewport [0, width - 1] and [0, height - 1]
-        p.x = sx * (screen_width_fx_ - 1.0_fx);
-        p.y = sy * (screen_height_fx_ - 1.0_fx);
+        p.x = sx * (render_width_fx_ - 1.0_fx);
+        p.y = sy * (render_height_fx_ - 1.0_fx);
     }
 
 
