@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <inplace_vector>
 #include <span>
 
@@ -88,7 +89,8 @@ concept HasPresent = requires {
 
 enum class DrawType : uint32_t
 {
-    Points = 1,
+    None = 0,
+    Points,
     Lines,
     Triangles,
     TrianglesWireFrame,
@@ -102,6 +104,13 @@ enum class FaceCullMode : int32_t
     None = 0,
     Front = 1,
     All = 2
+};
+
+enum class PolygonClipMode: uint32_t
+{
+    None = 0,   //do not run clipping
+    Trivial,    //clip whole polygon if any vertex fails
+    Full        //accurate, but slower
 };
 
 template<class Derived, class VERTEX_FUNCTION>
@@ -350,6 +359,11 @@ public:
         cull_ = mode;
     }
 
+    auto setPolygonClipping(PolygonClipMode const mode) -> void
+    {
+        clip_ = mode;
+    }
+
     auto setNearZ(fixed32 const z) -> void
     {
         near_z_ = z;
@@ -361,17 +375,17 @@ public:
     }
 
 
-     auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
+    auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
     {
-        // else if(vertex_size_ == 3)
-        // {
-        //     if(vs == 0) {vs = sizeof(vec3);}
-        //     for(auto const * p = vp + (first*vs); p < vp + ((first+count)*vs); p = p + vs)
-        //     {
-        //         working_vertex_buffer_.push_back( {reinterpret_cast<vec3 const*>(p)[0]} );
-        //     }
+        if(dt == DrawType::None || vertex_pointer_ == nullptr || count == 0)
+        {
+            return;
+        }
 
-        // }
+        constexpr uint32_t VERTS_IN_POINT = 1;
+        constexpr uint32_t VERTS_IN_LINE = 2;
+        constexpr uint32_t VERTS_IN_TRIANGLE = 3;
+        constexpr uint32_t VERTS_IN_QUAD = 4;
 
         vec3 workingVerts[4];
         vec3& wv0{workingVerts[0]};
@@ -403,45 +417,13 @@ public:
         std::byte const * vp;
         std::byte const * cp;
 
+
+
         if(dt == DrawType::Points)
         {
-            if(vertex_size_ == 2)
+            if(vertSize == 3)
             {
-                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + vertStrideBytes, cp = cp + colStrideBytes)
-                {
-                    //get position
-                    auto const * vpfx32 = reinterpret_cast<fixed32 const*>(vp);
-                    wv0.x = vpfx32[0];
-                    wv0.y = vpfx32[1];
-                    wv0.z.data = 0;
-
-                    //get color
-                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
-                    workingColor = cpus16[0];
-
-                    //run vertex function
-                    vf_(wv0);
-
-                    //clip near
-                    if(clip_point_near(wv0))
-                    {
-                        project_to_ndc(wv0);
-                        if(clip_point_ndc(wv0))
-                        {
-                            to_screen_space(wv0);
-
-                            int32_t a = static_cast<int32_t>(wv0.x);
-                            int32_t b = static_cast<int32_t>(wv0.y);
-
-                            //draw
-                            plot(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
-                        }
-                    }
-                }
-            }
-            else if(vertex_size_ == 3)
-            {
-                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + vertStrideBytes, cp = cp + colStrideBytes)
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_POINT*vertStrideBytes), cp = cp + (VERTS_IN_POINT*colStrideBytes))
                 {
                     //get position
                     auto const * vpfx32 = reinterpret_cast<fixed32 const*>(vp);
@@ -464,8 +446,36 @@ public:
                         {
                             to_screen_space(wv0);
 
-                            int32_t a = static_cast<int32_t>(wv0.x);
-                            int32_t b = static_cast<int32_t>(wv0.y);
+                            //draw
+                            plot(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                        }
+                    }
+                }
+            }
+            if(vertSize == 2)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_POINT*vertStrideBytes), cp = cp + (VERTS_IN_POINT*colStrideBytes))
+                {
+                    //get position
+                    auto const * vpfx32 = reinterpret_cast<fixed32 const*>(vp);
+                    wv0.x = vpfx32[0];
+                    wv0.y = vpfx32[1];
+                    wv0.z.data = 0;
+
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0);
+
+                    //clip near
+                    if(clip_point_near(wv0))
+                    {
+                        project_to_ndc(wv0);
+                        if(clip_point_ndc(wv0))
+                        {
+                            to_screen_space(wv0);
 
                             //draw
                             plot(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
@@ -476,6 +486,179 @@ public:
 
 
 
+
+        }
+        else if(dt == DrawType::Lines)
+        {
+            if(vertSize == 3)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_LINE*vertStrideBytes), cp = cp + (VERTS_IN_LINE*colStrideBytes))
+                {
+                    //get position
+                    auto const * vpfx32_0 = reinterpret_cast<fixed32 const*>(vp);
+                    auto const * vpfx32_1 = reinterpret_cast<fixed32 const*>(vp + vertStrideBytes);
+
+                    wv0.x = vpfx32_0[0];
+                    wv0.y = vpfx32_0[1];
+                    wv0.z = vpfx32_0[2];
+
+                    wv1.x = vpfx32_1[0];
+                    wv1.y = vpfx32_1[1];
+                    wv1.z = vpfx32_1[2];
+
+
+
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0); vf_(wv1);
+
+                    //clip near
+                    if(clip_line_near(wv0,wv1))
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1);
+                        if(clip_line_ndc(wv0,wv1))
+                        {
+                            to_screen_space(wv0); to_screen_space(wv1);
+
+                            //draw
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                 static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        }
+                    }
+                }
+            }
+            else if(vertSize == 2)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_LINE*vertStrideBytes), cp = cp + (VERTS_IN_LINE*colStrideBytes))
+                {
+                    //get position
+                    auto const * vpfx32_0 = reinterpret_cast<fixed32 const*>(vp);
+                    auto const * vpfx32_1 = reinterpret_cast<fixed32 const*>(vp + vertStrideBytes);
+
+                    wv0.x = vpfx32_0[0];
+                    wv0.y = vpfx32_0[1];
+                    wv0.z.data = 0;
+
+                    wv1.x = vpfx32_1[0];
+                    wv1.y = vpfx32_1[1];
+                    wv1.z.data = 0;
+
+
+
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0); vf_(wv1);
+
+                    //clip near
+                    if(clip_line_near(wv0,wv1))
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1);
+                        if(clip_line_ndc(wv0,wv1))
+                        {
+                            to_screen_space(wv0); to_screen_space(wv1);
+
+                            //draw
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                 static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        }
+                    }
+                }
+            }
+        }
+
+
+        else if(dt == DrawType::Triangles)
+        {
+            if(vertSize == 3)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_TRIANGLE*vertStrideBytes), cp = cp + (VERTS_IN_TRIANGLE*colStrideBytes))
+                {
+                    //get position
+                    auto const * vpfx32_0 = reinterpret_cast<fixed32 const*>(vp);
+                    auto const * vpfx32_1 = reinterpret_cast<fixed32 const*>(vp + vertStrideBytes);
+                    auto const * vpfx32_2 = reinterpret_cast<fixed32 const*>(vp + vertStrideBytes + vertStrideBytes);
+
+                    wv0.x = vpfx32_0[0];
+                    wv0.y = vpfx32_0[1];
+                    wv0.z = vpfx32_0[2];
+
+                    wv1.x = vpfx32_1[0];
+                    wv1.y = vpfx32_1[1];
+                    wv1.z = vpfx32_1[2];
+
+                    wv2.x = vpfx32_2[0];
+                    wv2.y = vpfx32_2[1];
+                    wv2.z = vpfx32_2[2];
+
+
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0); vf_(wv1); vf_(wv2);
+
+                    //clip near
+                    if(clip_line_near(wv0,wv1))
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1);
+                        if(clip_line_ndc(wv0,wv1))
+                        {
+                            to_screen_space(wv0); to_screen_space(wv1);
+
+                            //draw
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                 static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        }
+                    }
+                }
+            }
+            else if(vertSize == 2)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + (VERTS_IN_LINE*vertStrideBytes), cp = cp + (VERTS_IN_LINE*colStrideBytes))
+                {
+                    //get position
+                    auto const * vpfx32_0 = reinterpret_cast<fixed32 const*>(vp);
+                    auto const * vpfx32_1 = reinterpret_cast<fixed32 const*>(vp + vertStrideBytes);
+
+                    wv0.x = vpfx32_0[0];
+                    wv0.y = vpfx32_0[1];
+                    wv0.z.data = 0;
+
+                    wv1.x = vpfx32_1[0];
+                    wv1.y = vpfx32_1[1];
+                    wv1.z.data = 0;
+
+
+
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0); vf_(wv1);
+
+                    //clip near
+                    if(clip_line_near(wv0,wv1))
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1);
+                        if(clip_line_ndc(wv0,wv1))
+                        {
+                            to_screen_space(wv0); to_screen_space(wv1);
+
+                            //draw
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                 static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        }
+                    }
+                }
+            }
         }
 
 
@@ -487,28 +670,160 @@ public:
 
 protected:
 
+
+
+    auto draw_array_point_2d_
+
+
+
+
+
+
+
     auto clip_point_near(vec3 const & p) const -> bool
     {
         return p.z >= near_z_;
     }
 
-    auto clip_point_ndc(vec3 const & p) -> bool
+    auto clip_point_ndc(vec3 const & p) const -> bool
     {
         return p.x >= -1.0_fx && p.x <= 1.0_fx && p.y >= -1.0_fx && p.y <= 1.0_fx;
     }
 
 
-    auto clip_line_near(vec3& v0, vec3& v1) -> bool
+    auto clip_line_near(vec3& v0, vec3& v1) const -> bool
     {
-        //trivial pass
+        // Trivial pass: Both vertices in front of near plane
+        if (v0.z >= near_z_ && v1.z >= near_z_)
+        {
             return true;
+        }
 
-        //trivial fai
+        // Trivial fail: Both vertices behind near plane
+        if (v0.z < near_z_ && v1.z < near_z_)
+        {
             return false;
+        }
 
+        // Partial clip: One vertex is behind near_z_
+        fixed32 const dz = v1.z - v0.z;
 
-        //clamp if partial
-        return false;
+        // Avoid division by zero if dz is extremely small
+        if (dz == 0.0_fx)
+        {
+            return false;
+        }
+
+        // Calculate interpolation ratio t = (near_z - v0.z) / (v1.z - v0.z)
+        fixed32 const t = (near_z_ - v0.z) / dz;
+
+        // Compute intersection point along the segment
+        vec3 const intersection{
+            v0.x + t * (v1.x - v0.x),
+            v0.y + t * (v1.y - v0.y),
+            near_z_
+        };
+
+        // Replace whichever vertex is behind near_z_
+        if (v0.z < near_z_)
+        {
+            v0 = intersection;
+        }
+        else
+        {
+            v1 = intersection;
+        }
+
+        return true;
+    }
+
+    auto clip_line_ndc(vec3& v0, vec3& v1) const -> bool
+    {
+        // Trivial accept: both endpoints inside the NDC square
+        if (clip_point_ndc(v0) && clip_point_ndc(v1))
+        {
+            return true;
+        }
+
+        // Trivial reject: both endpoints outside the same edge
+        if ((v0.x < -1.0_fx && v1.x < -1.0_fx) ||
+            (v0.x >  1.0_fx && v1.x >  1.0_fx) ||
+            (v0.y < -1.0_fx && v1.y < -1.0_fx) ||
+            (v0.y >  1.0_fx && v1.y >  1.0_fx))
+        {
+            return false;
+        }
+
+        fixed32 const dx = v1.x - v0.x;
+        fixed32 const dy = v1.y - v0.y;
+        fixed32 const dz = v1.z - v0.z;
+
+        // Parametric range of the segment that remains inside: P(t) = v0 + t * d
+        fixed32 t_enter = 0.0_fx;
+        fixed32 t_exit  = 1.0_fx;
+
+        // p = direction of travel relative to the edge, q = distance from v0 to the edge
+        auto const clip_edge = [&](fixed32 p, fixed32 q) -> bool
+        {
+            if (p == 0.0_fx)
+            {
+                // Parallel to this edge: inside if q >= 0, otherwise entirely outside
+                return q >= 0.0_fx;
+            }
+
+            fixed32 const r = q / p;
+
+            if (p < 0.0_fx)
+            {
+                // Segment is entering the clip region
+                if (r > t_exit)  return false;
+                if (r > t_enter) t_enter = r;
+            }
+            else
+            {
+                // Segment is leaving the clip region
+                if (r < t_enter) return false;
+                if (r < t_exit)  t_exit = r;
+            }
+            return true;
+        };
+
+        if (!clip_edge(-dx, v0.x + 1.0_fx) ||   // x >= -1
+            !clip_edge( dx, 1.0_fx - v0.x) ||   // x <=  1
+            !clip_edge(-dy, v0.y + 1.0_fx) ||   // y >= -1
+            !clip_edge( dy, 1.0_fx - v0.y))     // y <=  1
+        {
+            return false;
+        }
+
+        // Both new endpoints are computed from the ORIGINAL v0, so build them
+        // before overwriting anything.
+        vec3 const orig = v0;
+
+        auto const clamp_ndc = [](fixed32 v)
+        {
+            return v < -1.0_fx ? -1.0_fx : (v > 1.0_fx ? 1.0_fx : v);
+        };
+
+        if (t_exit < 1.0_fx)
+        {
+            v1 = vec3{
+                clamp_ndc(orig.x + t_exit * dx),
+                clamp_ndc(orig.y + t_exit * dy),
+                orig.z + t_exit * dz
+            };
+        }
+
+        if (t_enter > 0.0_fx)
+        {
+            v0 = vec3{
+                clamp_ndc(orig.x + t_enter * dx),
+                clamp_ndc(orig.y + t_enter * dy),
+                orig.z + t_enter * dz
+            };
+        }
+
+        return true;
     }
 
     [[nodiscard]] auto clip_horizontal_line_screen(int32_t x0, int32_t y0, int32_t x1) -> int32_t
@@ -561,22 +876,17 @@ protected:
     }
 
 
-    enum class ClipResult
-    {
-        Accept,
-        Reject,
-        Partial
-    };
 
-    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
+
+    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> int32_t //0:reject,1:pass,2:partial
     {
         bool in0 = (v0.z >= near_z_);
         bool in1 = (v1.z >= near_z_);
         bool in2 = (v2.z >= near_z_);
 
-        if (in0 && in1 && in2) return ClipResult::Accept;
-        if (!in0 && !in1 && !in2) return ClipResult::Reject;
-        return ClipResult::Partial;
+        if (in0 && in1 && in2) return 1;
+        if (!in0 && !in1 && !in2) return 0;
+        return 2;
     }
 
     [[nodiscard]] auto clip_triangle_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
@@ -621,16 +931,16 @@ protected:
         return output;
     }
 
-    [[nodiscard]] auto clip_quad_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> ClipResult
+    [[nodiscard]] auto clip_quad_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> int32_t
     {
         bool in0 = (v0.z >= near_z_);
         bool in1 = (v1.z >= near_z_);
         bool in2 = (v2.z >= near_z_);
         bool in3 = (v3.z >= near_z_);
 
-        if (in0 && in1 && in2 && in3) return ClipResult::Accept;
-        if (!in0 && !in1 && !in2 && !in3) return ClipResult::Reject;
-        return ClipResult::Partial;
+        if (in0 && in1 && in2 && in3) return 1;
+        if (!in0 && !in1 && !in2 && !in3) return 0;
+        return 2;
     }
 
     [[nodiscard]] auto clip_quad_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> std::inplace_vector<vec3, 9>
@@ -692,6 +1002,7 @@ protected:
     fixed32 near_z_{0.0_fx};
 
     FaceCullMode cull_{FaceCullMode::All};
+    PolygonClipMode clip_{PolygonClipMode::None};
 
 
 };

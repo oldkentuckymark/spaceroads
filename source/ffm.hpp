@@ -304,35 +304,39 @@ consteval auto makeInvsqrtTable() -> LUT
 }
 
 
-static constexpr size_t INVZ_N = 1024;
-static constexpr uint32_t INVZ_BOUNDARY  = 2;     // near/far split (power of 2)
-static constexpr uint32_t INVZ_FAR_SHIFT = 4;     // far range = boundary * 2^this
+constexpr uint32_t INVZ_N         = 1024;
+constexpr uint32_t R0_ENTRIES     = INVZ_N >> 1; // 512
+constexpr uint32_t R1_ENTRIES     = INVZ_N >> 1; // 512
 
-consteval uint32_t log2(uint32_t x)
-{
-    return x <= 1 ? 0 : 1 + log2(x >> 1);
-}
+// Region 0: [0.0, 8.0)
+// Region 1: [8.0, 520.0)
+constexpr uint32_t INVZ_BOUNDARY  = 8;
+constexpr uint32_t INVZ_FAR_SHIFT = 6;
 
+constexpr uint32_t R0_MAX_RAW     = INVZ_BOUNDARY << 16;             // 8.0
+constexpr uint32_t R1_RANGE       = INVZ_BOUNDARY << INVZ_FAR_SHIFT; // 512.0
+constexpr uint32_t Z_MAX_RAW      = R0_MAX_RAW + (R1_RANGE << 16);   // 520.0
 
+constexpr uint32_t R0_SHIFT       = 10;
+constexpr uint32_t R1_SHIFT       = 16;
+constexpr uint32_t R1_OFFSET      = R0_ENTRIES;
 
 consteval auto makeInvZTable() -> std::array<fixed32, INVZ_N>
 {
-    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
-    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
-    constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
-    constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
-    constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
-
     std::array<fixed32, INVZ_N> table{};
+    double const max_fixed_dbl = static_cast<double>(fixed32::max());
 
-    for (uint32_t i = 0; i < R0_ENTRIES; ++i)
+    table[0] = fixed32::max();
+
+    // Region 0: [0.0, 8.0)
+    for (uint32_t i = 1; i < R0_ENTRIES; ++i)
     {
         double const z = static_cast<double>(i << R0_SHIFT) / fixed32::FIX_SCALEF;
-        table[i] = (i == 0) ? fixed32(4.0) : fixed32(1.0 / z);
+        double const recip = 1.0 / z;
+        table[i] = (recip >= max_fixed_dbl) ? fixed32::max() : fixed32(recip);
     }
 
+    // Region 1: [8.0, 520.0)
     for (uint32_t i = 0; i < R1_ENTRIES; ++i)
     {
         double const z = static_cast<double>(R0_MAX_RAW + (i << R1_SHIFT)) / fixed32::FIX_SCALEF;
@@ -348,30 +352,27 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 } // namespace
 
-[[nodiscard]] constexpr static auto invZ(fixed32 const z) -> fixed32
+
+[[nodiscard]] constexpr auto invZ(fixed32 const z) -> fixed32
 {
+    constexpr auto INV_Z_TABLE = makeInvZTable();
+    // Unsigned absolute evaluation
+    uint32_t const raw = (z.data < 0) ? (0u - static_cast<uint32_t>(z.data))
+                                      : static_cast<uint32_t>(z.data);
 
-    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
-    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
-    constexpr uint32_t Z_MAX_RAW    = R0_MAX_RAW + (R1_RANGE << 16);
-    constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
-    constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
-    constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
-
-    static constexpr auto table = makeInvZTable();
-
-    uint32_t const raw = static_cast<uint32_t>(z.data < 0 ? -z.data : z.data);
+    // Clamp Z to supported far depth
     uint32_t const clamped = (raw < Z_MAX_RAW) ? raw : (Z_MAX_RAW - 1);
 
+    // Direct shift index calculation
     uint32_t const idx = (clamped < R0_MAX_RAW)
                              ? (clamped >> R0_SHIFT)
                              : (R1_OFFSET + ((clamped - R0_MAX_RAW) >> R1_SHIFT));
 
-    fixed32 const r = table[idx];
+    fixed32 const r = INV_Z_TABLE[idx];
     return (z.data < 0) ? -r : r;
 }
+
+
 [[nodiscard]] constexpr auto radiansToGamdegs(fixed32 const a) -> int16_t
 {
     // 1. Single fixed-point multiply

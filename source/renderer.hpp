@@ -29,6 +29,7 @@ public:
         //if (!current_level_ || !current_player_) [[unlikely]] return;
 
         ctx.setFaceCulling(ffr::FaceCullMode::Back);
+        ctx.setPolygonClipping(ffr::PolygonClipMode::Trivial);
         ctx.clear();
 
         // 1. Update camera position and view angle
@@ -59,13 +60,13 @@ public:
 
             ctx.setColorPointer(0, current_level_->getCellColorBufferPtr(hit.w, hit.l));
             ctx.setVertexPointer(3, sizeof(Vertex), &mesh[0].position);
-            ctx.drawArray(ffr::DrawType::Points, 0, mesh.size());
+            ctx.drawArray(ffr::DrawType::Lines, 0, mesh.size());
         }
 
         vfn.modelPos = current_player_->position;
         ctx.setColorPointer(sizeof(Vertex), &current_ship_mesh_[0].color);
         ctx.setVertexPointer(3, sizeof(Vertex), &current_ship_mesh_[0].position);
-        ctx.drawArray(ffr::DrawType::Points, 0, current_ship_mesh_.size());
+        ctx.drawArray(ffr::DrawType::Lines, 0, current_ship_mesh_.size());
 
         ctx.present();
     }
