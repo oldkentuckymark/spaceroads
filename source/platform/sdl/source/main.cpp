@@ -67,6 +67,7 @@ public:
         SDL_SetRenderTarget(ren,tex);
         setScreenSize(RENDER_WIDTH,RENDER_HEIGHT);
         setNearZ(1.0_fx);
+        setAspectRatio(1.5_fx);
     }
 
     ~Context()

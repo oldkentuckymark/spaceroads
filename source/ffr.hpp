@@ -379,48 +379,100 @@ public:
         vec3& wv2{workingVerts[2]};
         vec3& wv3{workingVerts[3]};
 
-        uint16_t workingColors[4];
-        uint16_t& wc0{workingColors[0]};
-        uint16_t& wc1{workingColors[1]};
-        uint16_t& wc2{workingColors[2]};
-        uint16_t& wc3{workingColors[3]};
-
-
-        std::byte const * vertPtr = reinterpret_cast<std::byte const *>(vertex_pointer_);
-        std::byte const * colPtr = reinterpret_cast<std::byte const *>(color_pointer_);
+        uint16_t workingColor;
 
         auto vertStrideBytes = vertex_stride_;
         auto colStrideBytes = color_stride_;
         if(vertStrideBytes == 0) { vertStrideBytes = sizeof(fixed32)*vertex_size_; }
         if(colStrideBytes == 0) { colStrideBytes = sizeof(uint16_t); }
 
+
         auto const vertSize = vertex_size_;
         auto const colSize = 1;
         auto const vertSizeBytes = sizeof(fixed32)*vertex_size_;
-        auto const colSizeBytes = sizeof(fixed32);
+        auto const colSizeBytes = sizeof(uint16_t);
 
-        constexpr uint32_t VERTS_PER_POINT = 1;
-        constexpr uint32_t VERTS_PER_LINE = 2;
-        constexpr uint32_t VERTS_PER_TRIANGLE = 3;
-        constexpr uint32_t VERTS_PER_QUAD = 4;
+
+
+        std::byte const * const vertStartPtr = reinterpret_cast<std::byte const *>(vertex_pointer_) + (first * vertStrideBytes);
+        std::byte const * const colStartPtr  = reinterpret_cast<std::byte const *>(color_pointer_)  + (first * colStrideBytes);
+
+        std::byte const * const vertEndPtr   = vertStartPtr + (count * vertStrideBytes);
+        std::byte const * const colEndPtr    = colStartPtr  + (count * colStrideBytes);
+
+        std::byte const * vp;
+        std::byte const * cp;
 
         if(dt == DrawType::Points)
         {
-            for(auto const* vp = vertPtr+(first*vertSizeBytes); vp < vertPtr+((first+count)*vertSizeBytes); vp = vp + vertStrideBytes)
+            if(vertex_size_ == 2)
             {
-                //copy position data from vertex_pointer_ to working buffer
-                fixed32 const* vpf32 = reinterpret_cast<fixed32 const*>(vp);
-                fixed32* wvp = reinterpret_cast<fixed32*>(workingVerts);
-                for(auto i = 0ul; i < vertSize*VERTS_PER_POINT; ++i)
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + vertStrideBytes, cp = cp + colStrideBytes)
                 {
+                    //get position
+                    auto const * vpfx32 = reinterpret_cast<fixed32 const*>(vp);
+                    wv0.x = vpfx32[0];
+                    wv0.y = vpfx32[1];
+                    wv0.z.data = 0;
 
-                    *wvp = *vpf32;
-                    ++vpf32;
-                    ++wvp;
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
+
+                    //run vertex function
+                    vf_(wv0);
+
+                    //clip near
+                    if(clip_point_near(wv0))
+                    {
+                        project_to_ndc(wv0);
+                        if(clip_point_ndc(wv0))
+                        {
+                            to_screen_space(wv0);
+
+                            int32_t a = static_cast<int32_t>(wv0.x);
+                            int32_t b = static_cast<int32_t>(wv0.y);
+
+                            //draw
+                            plot(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                        }
+                    }
                 }
             }
+            else if(vertex_size_ == 3)
+            {
+                for(vp = vertStartPtr, cp = colStartPtr; vp < vertEndPtr; vp = vp + vertStrideBytes, cp = cp + colStrideBytes)
+                {
+                    //get position
+                    auto const * vpfx32 = reinterpret_cast<fixed32 const*>(vp);
+                    wv0.x = vpfx32[0];
+                    wv0.y = vpfx32[1];
+                    wv0.z = vpfx32[2];
 
+                    //get color
+                    auto const * cpus16 = reinterpret_cast<uint16_t const*>(cp);
+                    workingColor = cpus16[0];
 
+                    //run vertex function
+                    vf_(wv0);
+
+                    //clip near
+                    if(clip_point_near(wv0))
+                    {
+                        project_to_ndc(wv0);
+                        if(clip_point_ndc(wv0))
+                        {
+                            to_screen_space(wv0);
+
+                            int32_t a = static_cast<int32_t>(wv0.x);
+                            int32_t b = static_cast<int32_t>(wv0.y);
+
+                            //draw
+                            plot(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                        }
+                    }
+                }
+            }
 
 
 
@@ -442,7 +494,7 @@ protected:
 
     auto clip_point_ndc(vec3 const & p) -> bool
     {
-        return p.x >= 0.0_fx && p.x <= 1.0_fx && p.y >= 0.0_fx && p.y <= 1.0_fx;
+        return p.x >= -1.0_fx && p.x <= 1.0_fx && p.y >= -1.0_fx && p.y <= 1.0_fx;
     }
 
 
@@ -473,7 +525,7 @@ protected:
 
 
 
-     auto project_to_ndc(vec3& p) -> void
+    auto project_to_ndc(vec3& p) -> void
     {
         p.x = p.x * aspect_ratio_;
         p.x = p.x * invZ(p.z);
