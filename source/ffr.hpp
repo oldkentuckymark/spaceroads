@@ -5,6 +5,7 @@
 #include <cstring>
 #include <inplace_vector>
 #include <span>
+#include <ranges>
 
 #include "color.hpp"
 #include "util.hpp"
@@ -98,12 +99,12 @@ enum class DrawType : uint32_t
     QuadsWireFrame
 };
 
-enum class FaceCullMode : int32_t
+enum class FaceCullMode : uint32_t
 {
-    Back = -1,
-    None = 0,
-    Front = 1,
-    All = 2
+    Back = 0,
+    None = 1,
+    Front = 2,
+    All = 3
 };
 
 enum class PolygonClipMode: uint32_t
@@ -375,780 +376,35 @@ public:
     }
 
 
-    auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
+    template<size_t VERTEX_SIZE, DrawType DT>
+    auto draw(uint32_t first, uint32_t count) -> void
     {
-        if(dt == DrawType::None || vertex_pointer_ == nullptr || count == 0) { return; }
-
-
-
-        if(vertex_size_ == 2)
-        {
-            if(dt == DrawType::Points)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::Full>(first,count);
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::None>(first,count);
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::Trivial>(first,count);
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::Full>(first,count);
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::None>(first,count);
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::Trivial>(first,count);
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Lines)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Triangles)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::TrianglesWireFrame)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Quads)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::QuadsWireFrame)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-        }
-        else if(vertex_size_ == 3)
-        {
-            if(dt == DrawType::Points)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Lines)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Triangles)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::TrianglesWireFrame)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::Quads)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-            else if(dt == DrawType::QuadsWireFrame)
-            {
-                if(cull_ == FaceCullMode::All)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Back)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::Front)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-                else if(cull_ == FaceCullMode::None)
-                {
-                    if(clip_ == PolygonClipMode::Full)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::None)
-                    {
-
-                    }
-                    else if(clip_ == PolygonClipMode::Trivial)
-                    {
-
-                    }
-                }
-            }
-        }
-
-
-
-
+        //todo: implement here
     }
 
+
+    void drawArray(DrawType const dt, uint32_t const first, uint32_t const count) {
+        if (dt == DrawType::None || count == 0 || vertex_pointer_ == nullptr) return;
+
+        uint32_t const key = pack(vertex_size_, dt);
+
+        [&]<uint32_t... Keys>(std::integer_sequence<uint32_t, Keys...>) {
+            ((
+                 key == Keys ? (
+                                   []<uint32_t K>(auto* self, uint32_t f, uint32_t c) {
+                                       constexpr auto params = unpack(K);
+                                       if constexpr (params.vsize <= 3 &&
+                                                     params.dt >= DrawType::Points &&
+                                                     params.dt <= DrawType::QuadsWireFrame)
+                                       {
+                                           self->template draw<params.vsize, params.dt>(f, c);
+                                       }
+                                   }.template operator()<Keys>(this, first, count),
+                                   true
+                                   ) : false
+                 ) || ...);
+        }(std::make_integer_sequence<uint32_t, 16>{});
+    }
 
 
 
@@ -1174,11 +430,7 @@ protected:
     }
 
 
-    template<size_t VERTEX_SIZE, DrawType DT, FaceCullMode FCM, PolygonClipMode PCM>
-    auto draw(uint32_t first, uint32_t count) -> void
-    {
 
-    }
 
 
     auto clip_point_near(vec3 const & p) const -> bool
@@ -1506,63 +758,43 @@ protected:
     FaceCullMode cull_{FaceCullMode::All};
     PolygonClipMode clip_{PolygonClipMode::None};
 
+    struct UnpackedKey
+    {
+        size_t   vsize;   // Reconstructed size: 2 or 3
+        DrawType dt;      // Reconstructed type
+    };
+
+    static constexpr uint32_t pack(size_t const vsize, DrawType const dt) noexcept {
+        constexpr uint32_t DT_MASK    = 0x7;
+        constexpr uint32_t VSIZE_MASK = 0x1;
+        constexpr uint32_t VSIZE_SHIFT = 3;
+
+        uint32_t const vsize_i = static_cast<uint32_t>(vsize - 2) & VSIZE_MASK;
+        uint32_t const dt_i    = (static_cast<uint32_t>(dt) - 1) & DT_MASK;
+
+        return (vsize_i << VSIZE_SHIFT) | dt_i;
+    }
+
+    static constexpr UnpackedKey unpack(uint32_t const key) noexcept {
+        constexpr uint32_t DT_MASK    = 0x7;
+        constexpr uint32_t VSIZE_MASK = 0x1;
+        constexpr uint32_t VSIZE_SHIFT = 3;
+
+        uint32_t const vsize_i = (key >> VSIZE_SHIFT) & VSIZE_MASK;
+        uint32_t const dt_i    = key & DT_MASK;
+
+        return UnpackedKey{
+            static_cast<size_t>(vsize_i + 2),
+            static_cast<DrawType>(dt_i + 1)
+        };
+    }
+
+
 
 };
 
-
-
 }
 
 
 
-
-
-
-template <size_t VSize, DrawType DT>
-IWRAM_CODE void draw_kernel(FaceCullMode cull, PolygonClipMode clip, uint32_t first, uint32_t count)
-{
-    if (cull == FaceCullMode::All) return;
-
-    // Fast early-out using ARM conditional execution / simple branch outside loop
-    if (clip == PolygonClipMode::None) {
-        // Inner loop: Unclipped fast-path
-        // Compiler generates zero-branch predicated instructions for inner logic
-        for (uint32_t i = 0; i < count; ++i) { /* ... */ }
-    } else {
-        // Inner loop: Clipped path
-        for (uint32_t i = 0; i < count; ++i) { /* ... */ }
-    }
-}
-
-IWRAM_CODE auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
-{
-    if (dt == DrawType::None || vertex_pointer_ == nullptr || count == 0) return;
-
-    // Only 2 (VSize) x 6 (DrawType) = 12 total template instances in IWRAM!
-    using KernelFn = void(*)(FaceCullMode, PolygonClipMode, uint32_t, uint32_t);
-
-    static constexpr KernelFn dispatch_table[2][6] = {
-        {
-            &draw_kernel<2, DrawType::Points>,
-            &draw_kernel<2, DrawType::Lines>,
-            &draw_kernel<2, DrawType::Triangles>,
-            &draw_kernel<2, DrawType::TrianglesWireFrame>,
-            &draw_kernel<2, DrawType::Quads>,
-            &draw_kernel<2, DrawType::QuadsWireFrame>
-        },
-        {
-            &draw_kernel<3, DrawType::Points>,
-            &draw_kernel<3, DrawType::Lines>,
-            &draw_kernel<3, DrawType::Triangles>,
-            &draw_kernel<3, DrawType::TrianglesWireFrame>,
-            &draw_kernel<3, DrawType::Quads>,
-            &draw_kernel<3, DrawType::QuadsWireFrame>
-        }
-    };
-
-    uint32_t const vsize_idx = vertex_size_ - 2; // 2 -> 0, 3 -> 1
-    uint32_t const dt_idx = static_cast<uint32_t>(dt) - 1; // Skip DrawType::None
-
-    dispatch_table[vsize_idx][dt_idx](cull_, clip_, first, count);
-}
 
