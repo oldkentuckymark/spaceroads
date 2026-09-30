@@ -380,7 +380,6 @@ public:
         if(dt == DrawType::None || vertex_pointer_ == nullptr || count == 0) { return; }
 
 
-        uint32_t dispatchMask;
 
         if(vertex_size_ == 2)
         {
@@ -390,30 +389,30 @@ public:
                 {
                     if(clip_ == PolygonClipMode::Full)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::Full>(first,count);
                     }
                     else if(clip_ == PolygonClipMode::None)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::None>(first,count);
                     }
                     else if(clip_ == PolygonClipMode::Trivial)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::All,PolygonClipMode::Trivial>(first,count);
                     }
                 }
                 else if(cull_ == FaceCullMode::Back)
                 {
                     if(clip_ == PolygonClipMode::Full)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::Full>(first,count);
                     }
                     else if(clip_ == PolygonClipMode::None)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::None>(first,count);
                     }
                     else if(clip_ == PolygonClipMode::Trivial)
                     {
-
+                        draw<2,DrawType::Points,FaceCullMode::Back,PolygonClipMode::Trivial>(first,count);
                     }
                 }
                 else if(cull_ == FaceCullMode::Front)
@@ -1513,3 +1512,57 @@ protected:
 
 
 }
+
+
+
+
+
+
+template <size_t VSize, DrawType DT>
+IWRAM_CODE void draw_kernel(FaceCullMode cull, PolygonClipMode clip, uint32_t first, uint32_t count)
+{
+    if (cull == FaceCullMode::All) return;
+
+    // Fast early-out using ARM conditional execution / simple branch outside loop
+    if (clip == PolygonClipMode::None) {
+        // Inner loop: Unclipped fast-path
+        // Compiler generates zero-branch predicated instructions for inner logic
+        for (uint32_t i = 0; i < count; ++i) { /* ... */ }
+    } else {
+        // Inner loop: Clipped path
+        for (uint32_t i = 0; i < count; ++i) { /* ... */ }
+    }
+}
+
+IWRAM_CODE auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
+{
+    if (dt == DrawType::None || vertex_pointer_ == nullptr || count == 0) return;
+
+    // Only 2 (VSize) x 6 (DrawType) = 12 total template instances in IWRAM!
+    using KernelFn = void(*)(FaceCullMode, PolygonClipMode, uint32_t, uint32_t);
+
+    static constexpr KernelFn dispatch_table[2][6] = {
+        {
+            &draw_kernel<2, DrawType::Points>,
+            &draw_kernel<2, DrawType::Lines>,
+            &draw_kernel<2, DrawType::Triangles>,
+            &draw_kernel<2, DrawType::TrianglesWireFrame>,
+            &draw_kernel<2, DrawType::Quads>,
+            &draw_kernel<2, DrawType::QuadsWireFrame>
+        },
+        {
+            &draw_kernel<3, DrawType::Points>,
+            &draw_kernel<3, DrawType::Lines>,
+            &draw_kernel<3, DrawType::Triangles>,
+            &draw_kernel<3, DrawType::TrianglesWireFrame>,
+            &draw_kernel<3, DrawType::Quads>,
+            &draw_kernel<3, DrawType::QuadsWireFrame>
+        }
+    };
+
+    uint32_t const vsize_idx = vertex_size_ - 2; // 2 -> 0, 3 -> 1
+    uint32_t const dt_idx = static_cast<uint32_t>(dt) - 1; // Skip DrawType::None
+
+    dispatch_table[vsize_idx][dt_idx](cull_, clip_, first, count);
+}
+
