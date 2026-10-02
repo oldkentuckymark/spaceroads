@@ -19,29 +19,29 @@ public:
     auto operator()(ffm::vec3& in) -> void
     {
 
-        // // 1. Model Space -> World Space
-        // ffm::fixed32 wx = in.x + modelPos.x;
-        // ffm::fixed32 wy = in.y + modelPos.y;
-        // ffm::fixed32 wz = in.z + modelPos.z;
+        // 1. Model Space -> World Space
+        ffm::fixed32 wx = in.x + modelPos.x;
+        ffm::fixed32 wy = in.y + modelPos.y;
+        ffm::fixed32 wz = in.z + modelPos.z;
 
-        // // 2. World Space -> Camera-Relative Space (Translate FIRST)
-        // // This makes the camera the origin (0,0,0) for the rotation
-        // ffm::fixed32 dx = wx - camPos.x;
-        // ffm::fixed32 dy = wy - camPos.y;
-        // ffm::fixed32 dz = wz - camPos.z;
+        // 2. World Space -> Camera-Relative Space (Translate FIRST)
+        // This makes the camera the origin (0,0,0) for the rotation
+        ffm::fixed32 dx = wx - camPos.x;
+        ffm::fixed32 dy = wy - camPos.y;
+        ffm::fixed32 dz = wz - camPos.z;
 
-        // // 3. Apply Camera Yaw Rotation around the Camera's position
-        // ffm::fixed32 rx = dx * camYawCos - dz * camYawSin;
-        // ffm::fixed32 rz = dx * camYawSin + dz * camYawCos;
-        // // dy remains unchanged (Yaw only affects X and Z)
+        // 3. Apply Camera Yaw Rotation around the Camera's position
+        ffm::fixed32 rx = dx * camYawCos - dz * camYawSin;
+        ffm::fixed32 rz = dx * camYawSin + dz * camYawCos;
+        // dy remains unchanged (Yaw only affects X and Z)
 
-        // // 4. Output to View Space
-        // in.x = rx;
-        // in.y = dy;
-        // in.z = rz;
+        // 4. Output to View Space
+        in.x = rx;
+        in.y = dy;
+        in.z = rz;
 
 
-        in = in + modelPos - camPos;
+        //in = in + modelPos - camPos;
     }
 
     ffm::vec3 camPos{0.0_fx, 0.0_fx, 0.0_fx};

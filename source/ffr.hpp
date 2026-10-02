@@ -6,6 +6,7 @@
 #include <inplace_vector>
 #include <span>
 #include <ranges>
+#include <meta>
 
 #include "color.hpp"
 #include "util.hpp"
@@ -90,8 +91,7 @@ concept HasPresent = requires {
 
 enum class DrawType : uint32_t
 {
-    None = 0,
-    Points,
+    Points = 1,
     Lines,
     Triangles,
     TrianglesWireFrame,
@@ -140,7 +140,7 @@ public:
         derived().plot(x, y, color);
     }
 
-    auto line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, Color color) -> void
+    auto line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color) -> void
     {
         if constexpr (HasLine<Derived>) {
             derived().line(x0, y0, x1, y1, color);
@@ -199,7 +199,7 @@ public:
         }
     }
 
-    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, Color color) -> void
+    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
     {
         if constexpr (HasLineHorizontal<Derived>)
         {
@@ -329,7 +329,7 @@ public:
         }
     }
 
-    auto setVertexPointer(uint32_t const size, uint32_t const stride, void const* vp) -> void
+    auto setVertexPointer(uint32_t size, uint32_t const stride, void const* vp) -> void
     {
         vertex_size_ = size;
         vertex_stride_ = stride;
@@ -375,15 +375,21 @@ public:
         aspect_ratio_ = ar;
     }
 
-protected:
-    template<size_t VERTEX_SIZE, DrawType DT>
-    auto draw(uint32_t first, uint32_t count) -> void
+
+    template<DrawType DT, uint32_t VERTEX_SIZE>
+    auto drawArray_impl_(uint32_t first, uint32_t count) -> void
     {
-        ffm::vec3 workingVerts[4];
-        ffm::vec3& wv0{workingVerts[0]};
-        ffm::vec3& wv1{workingVerts[1]};
-        ffm::vec3& wv2{workingVerts[2]};
-        ffm::vec3& wv3{workingVerts[3]};
+
+        constexpr uint32_t VERTS_PER_POINT = 1;
+        constexpr uint32_t VERTS_PER_LINE = 2;
+        constexpr uint32_t VERTS_PER_TRIANGLE = 3;
+        constexpr uint32_t VERTS_PER_QUAD = 4;
+
+
+        ffm::vec3 wv0;
+        ffm::vec3 wv1;
+        ffm::vec3 wv2;
+        ffm::vec3 wv3;
 
         Color workingColor = 0;
 
@@ -459,28 +465,18 @@ protected:
         }
     }
 
-public:
 
-    void drawArray(DrawType const dt, uint32_t const first, uint32_t const count)
+    auto drawArray(DrawType const DT, uint32_t const first, uint32_t const count) -> void
     {
-        if (dt == DrawType::None || count == 0 || vertex_pointer_ == nullptr) return;
-
-        uint32_t const key = pack(vertex_size_, dt);
-
-        [&]<uint32_t... Keys>(std::integer_sequence<uint32_t, Keys...>)
+        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^DrawType)))
         {
-            ((key == Keys ? ([]<uint32_t K>(auto* self, uint32_t f, uint32_t c)
-                            {
-                                constexpr auto params = unpack(K);
-                                if constexpr (params.vsize <= 3 && params.dt >= DrawType::Points && params.dt <= DrawType::QuadsWireFrame)
-                                {
-                                    self->template draw<params.vsize, params.dt>(f, c);
-                                }
-                            }.template operator()<Keys>(this, first, count), true) : false) || ...);
-        }(std::make_integer_sequence<uint32_t, 16>{});
+            if(DT != [:e:]) { continue; }
+
+            if(vertex_size_ == 2) { drawArray_impl_<([:e:]), 2>(first, count); }
+            else                  { drawArray_impl_<([:e:]), 3>(first, count); }
+            return;
+        }
     }
-
-
 
 protected:
 
@@ -497,7 +493,7 @@ protected:
         }
         else if constexpr (VERTEX_SIZE == 3)
         {
-            dst[0] - vp[0];
+            dst[0] = vp[0];
             dst[1] = vp[1];
             dst[2] = vp[2];
         }
@@ -832,36 +828,6 @@ protected:
     FaceCullMode cull_{FaceCullMode::All};
     PolygonClipMode clip_{PolygonClipMode::None};
 
-    struct UnpackedKey
-    {
-        size_t   vsize;   // Reconstructed size: 2 or 3
-        DrawType dt;      // Reconstructed type
-    };
-
-    static constexpr uint32_t pack(size_t const vsize, DrawType const dt) noexcept {
-        constexpr uint32_t DT_MASK    = 0x7;
-        constexpr uint32_t VSIZE_MASK = 0x1;
-        constexpr uint32_t VSIZE_SHIFT = 3;
-
-        uint32_t const vsize_i = static_cast<uint32_t>(vsize - 2) & VSIZE_MASK;
-        uint32_t const dt_i    = (static_cast<uint32_t>(dt) - 1) & DT_MASK;
-
-        return (vsize_i << VSIZE_SHIFT) | dt_i;
-    }
-
-    static constexpr UnpackedKey unpack(uint32_t const key) noexcept {
-        constexpr uint32_t DT_MASK    = 0x7;
-        constexpr uint32_t VSIZE_MASK = 0x1;
-        constexpr uint32_t VSIZE_SHIFT = 3;
-
-        uint32_t const vsize_i = (key >> VSIZE_SHIFT) & VSIZE_MASK;
-        uint32_t const dt_i    = key & DT_MASK;
-
-        return UnpackedKey{
-            static_cast<size_t>(vsize_i + 2),
-            static_cast<DrawType>(dt_i + 1)
-        };
-    }
 
 
 
