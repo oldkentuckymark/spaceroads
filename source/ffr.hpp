@@ -397,13 +397,12 @@ public:
         std::byte const * cp;
 
         auto vertStride = vertex_stride_;
-        if(vertex_stride_ == 0) { vertStride = VERTEX_SIZE*sizeof(ffm::fixed32); }
+        if(vertStride == 0) { vertStride = VERTEX_SIZE*sizeof(ffm::fixed32); }
         auto colStride = color_stride_;
         if(color_pointer_ == nullptr)
         {
             workingColor = static_cast<Color>(color_stride_);
             cp = reinterpret_cast<std::byte const *>(&workingColor);
-
             colStride = 0;
         }
         else

@@ -59,7 +59,7 @@ public:
             };
 
             ctx.setColorPointer(0, current_level_->getCellColorBufferPtr(hit.w, hit.l));
-            ctx.setVertexPointer(3,sizeof(Vertex), &mesh[0].position);
+            ctx.setVertexPointer(3,0, &mesh[0].position);
             ctx.drawArray(ffr::DrawType::Points, 0, mesh.size());
         }
 
