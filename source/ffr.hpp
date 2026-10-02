@@ -469,7 +469,7 @@ public:
     {
         template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^DrawType)))
         {
-            if(DT != [:e:]) { continue; }
+            //if(DT != [:e:]) { continue; }
 
             if(vertex_size_ == 2) { drawArray_impl_<([:e:]), 2>(first, count); }
             else                  { drawArray_impl_<([:e:]), 3>(first, count); }
