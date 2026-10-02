@@ -104,6 +104,8 @@ public:
         auto cc = util::Convert555to888(color);
         SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
         SDL_RenderPoint(ren,x,y);
+
+
     }
 
 private:

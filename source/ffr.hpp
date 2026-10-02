@@ -421,7 +421,6 @@ public:
 
             workingColor = reinterpret_cast<Color const *>(cp)[0];
 
-
             if constexpr (DT == DrawType::Points)
             {
                 read_vertex<VERTEX_SIZE>(vp,reinterpret_cast<ffm::fixed32*>(&wv0));
@@ -433,6 +432,10 @@ public:
                     if(clip_point_ndc(wv0))
                     {
                         to_screen_space(wv0);
+                        auto aa = static_cast<int32_t>(wv0.x);
+                        auto bb = static_cast<int32_t>(wv0.y);
+                        auto cc = static_cast<int32_t>(wv0.z);
+
                         plot(static_cast<int32_t>(wv0.x),static_cast<int32_t>(wv0.y),workingColor);
                     }
                 }
