@@ -375,34 +375,108 @@ public:
         aspect_ratio_ = ar;
     }
 
-
+protected:
     template<size_t VERTEX_SIZE, DrawType DT>
     auto draw(uint32_t first, uint32_t count) -> void
     {
-        //todo: implement here
+        ffm::vec3 workingVerts[4];
+        ffm::vec3& wv0{workingVerts[0]};
+        ffm::vec3& wv1{workingVerts[1]};
+        ffm::vec3& wv2{workingVerts[2]};
+        ffm::vec3& wv3{workingVerts[3]};
+
+        Color workingColor = 0;
+
+        std::byte const * vp;
+        std::byte const * cp;
+
+        auto vertStride = vertex_stride_;
+        if(vertex_stride_ == 0) { vertStride = VERTEX_SIZE*sizeof(ffm::fixed32); }
+        auto colStride = color_stride_;
+        if(color_pointer_ == nullptr)
+        {
+            workingColor = static_cast<Color>(color_stride_);
+            cp = reinterpret_cast<std::byte const *>(&workingColor);
+
+            colStride = 0;
+        }
+        else
+        {
+            if(color_stride_ == 0)
+            {
+                colStride = sizeof(Color);
+            }
+            cp = reinterpret_cast<std::byte const *>(color_pointer_) + (first*colStride);
+        }
+
+        vp = reinterpret_cast<std::byte const *>(vertex_pointer_) + (first*vertStride);
+
+        for(auto i = count; i > 0; --i)
+        {
+
+            workingColor = reinterpret_cast<Color const *>(cp)[0];
+
+
+            if constexpr (DT == DrawType::Points)
+            {
+                read_vertex<VERTEX_SIZE>(vp,reinterpret_cast<ffm::fixed32*>(&wv0));
+
+                vf_(wv0);
+                if(clip_point_near(wv0))
+                {
+                    project_to_ndc(wv0);
+                    if(clip_point_ndc(wv0))
+                    {
+                        to_screen_space(wv0);
+                        plot(static_cast<int32_t>(wv0.x),static_cast<int32_t>(wv0.y),workingColor);
+                    }
+                }
+            }
+            else if constexpr (DT == DrawType::Lines)
+            {
+
+            }
+            else if constexpr (DT == DrawType::Triangles)
+            {
+
+            }
+            else if constexpr (DT == DrawType::TrianglesWireFrame)
+            {
+
+            }
+            else if constexpr (DT == DrawType::Quads)
+            {
+
+            }
+            else if constexpr (DT == DrawType::QuadsWireFrame)
+            {
+
+            }
+
+            vp = vp + vertStride;
+            cp = cp + colStride;
+
+        }
     }
 
+public:
 
-    void drawArray(DrawType const dt, uint32_t const first, uint32_t const count) {
+    void drawArray(DrawType const dt, uint32_t const first, uint32_t const count)
+    {
         if (dt == DrawType::None || count == 0 || vertex_pointer_ == nullptr) return;
 
         uint32_t const key = pack(vertex_size_, dt);
 
-        [&]<uint32_t... Keys>(std::integer_sequence<uint32_t, Keys...>) {
-            ((
-                 key == Keys ? (
-                                   []<uint32_t K>(auto* self, uint32_t f, uint32_t c) {
-                                       constexpr auto params = unpack(K);
-                                       if constexpr (params.vsize <= 3 &&
-                                                     params.dt >= DrawType::Points &&
-                                                     params.dt <= DrawType::QuadsWireFrame)
-                                       {
-                                           self->template draw<params.vsize, params.dt>(f, c);
-                                       }
-                                   }.template operator()<Keys>(this, first, count),
-                                   true
-                                   ) : false
-                 ) || ...);
+        [&]<uint32_t... Keys>(std::integer_sequence<uint32_t, Keys...>)
+        {
+            ((key == Keys ? ([]<uint32_t K>(auto* self, uint32_t f, uint32_t c)
+                            {
+                                constexpr auto params = unpack(K);
+                                if constexpr (params.vsize <= 3 && params.dt >= DrawType::Points && params.dt <= DrawType::QuadsWireFrame)
+                                {
+                                    self->template draw<params.vsize, params.dt>(f, c);
+                                }
+                            }.template operator()<Keys>(this, first, count), true) : false) || ...);
         }(std::make_integer_sequence<uint32_t, 16>{});
     }
 
@@ -421,7 +495,7 @@ protected:
             dst[1] = vp[1];
             dst[2].data = 0;
         }
-        if constexpr (VERTEX_SIZE == 3)
+        else if constexpr (VERTEX_SIZE == 3)
         {
             dst[0] - vp[0];
             dst[1] = vp[1];
