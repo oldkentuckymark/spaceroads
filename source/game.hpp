@@ -92,7 +92,7 @@ public:
     auto update(ffm::fixed32 dt) -> void
     {
         player_.position = player_.position + (player_.velocity * dt);
-        camera_.position = player_.position + ffm::vec3{0.0_fx, 1.0_fx, -7.5_fx};
+        camera_.position = player_.position + ffm::vec3{0.0_fx, 1.2_fx, -1.5_fx};
     }
 
 private:

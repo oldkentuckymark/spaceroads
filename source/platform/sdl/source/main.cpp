@@ -61,7 +61,8 @@ public:
     Context()
     {
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_CreateWindowAndRenderer("spaceroads-sdl",SCREEN_WIDTH*scale,SCREEN_HEIGHT*scale,0,&win,&ren);
+        win = SDL_CreateWindow("spaceroads-sdl",SCREEN_WIDTH*scale,SCREEN_HEIGHT*scale,0);
+        ren = SDL_CreateRenderer(win,"software");
         tex = SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, RENDER_WIDTH,RENDER_HEIGHT);
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetRenderTarget(ren,tex);
