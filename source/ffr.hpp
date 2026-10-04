@@ -385,6 +385,11 @@ public:
         constexpr uint32_t VERTS_PER_TRIANGLE = 3;
         constexpr uint32_t VERTS_PER_QUAD = 4;
 
+        constexpr uint32_t VERTS_PER_PRIM =
+        (DT == DrawType::Points) ? VERTS_PER_POINT : (DT == DrawType::Lines) ? VERTS_PER_LINE :
+        (DT == DrawType::Triangles || DT == DrawType::TrianglesWireFrame) ? VERTS_PER_TRIANGLE :
+        VERTS_PER_QUAD;
+
 
         ffm::vec3 wv0;
         ffm::vec3 wv1;
@@ -416,14 +421,14 @@ public:
 
         vp = reinterpret_cast<std::byte const *>(vertex_pointer_) + (first*vertStride);
 
-        for(auto i = count; i > 0; --i)
+        for(auto i = count / VERTS_PER_PRIM; i > 0; --i)
         {
 
             workingColor = reinterpret_cast<Color const *>(cp)[0];
 
             if constexpr (DT == DrawType::Points)
             {
-                read_vertex<VERTEX_SIZE>(vp,reinterpret_cast<ffm::fixed32*>(&wv0));
+                read_vertex<VERTEX_SIZE>(vp, wv0);
 
                 vf_(wv0);
                 if(clip_point_near(wv0))
@@ -432,22 +437,98 @@ public:
                     if(clip_point_ndc(wv0))
                     {
                         to_screen_space(wv0);
-                        auto aa = static_cast<int32_t>(wv0.x);
-                        auto bb = static_cast<int32_t>(wv0.y);
-                        auto cc = static_cast<int32_t>(wv0.z);
-
                         plot(static_cast<int32_t>(wv0.x),static_cast<int32_t>(wv0.y),workingColor);
                     }
                 }
+                vp = vp + vertStride;
+                cp = cp + colStride;
             }
             else if constexpr (DT == DrawType::Lines)
             {
+                read_vertex<VERTEX_SIZE>(vp, wv0);
+                read_vertex<VERTEX_SIZE>(vp+vertStride, wv1);
 
+                vf_(wv0); vf_(wv1);
+                if(clip_line_near(wv0,wv1))
+                {
+                    project_to_ndc(wv0); project_to_ndc(wv1);
+                    if(clip_line_ndc(wv0,wv1))
+                    {
+                        to_screen_space(wv0); to_screen_space(wv1);
+                        line(static_cast<int32_t>(wv0.x),static_cast<int32_t>(wv0.y),
+                             static_cast<int32_t>(wv1.x),static_cast<int32_t>(wv1.y), workingColor);
+                    }
+
+                }
+                vp = vp + vertStride + vertStride;
+                cp = cp + colStride + colStride;
             }
             else if constexpr (DT == DrawType::Triangles)
             {
+                read_vertex<VERTEX_SIZE>(vp,wv0);
+                read_vertex<VERTEX_SIZE>(vp + vertStride,wv1);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride,wv2);
 
+                vf_(wv0); vf_(wv1); vf_(wv2);
+                if(clip_ == PolygonClipMode::None)
+                {
+                    project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2);
+                    to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2);
+                    if(is_cull_passing(wv0,wv1,wv2))
+                    {
+                        triangle
+                        (
+                            static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.x),
+                            static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.x),
+                            static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.x), workingColor
+                        );
+                    }
+
+                }
+                else if(clip_ == PolygonClipMode::Trivial)
+                {
+                    if(clip_triangle_trivial(wv0,wv1,wv2) <= 2)
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2);
+                        to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2);
+                        if(true || is_cull_passing(wv0,wv1,wv2))
+                        {
+                            triangle
+                            (
+                                static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y),
+                                static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor
+                            );
+                        }
+                    }
+                }
+                else if(clip_ == PolygonClipMode::Full)
+                {
+                    if(clip_triangle_trivial(wv0,wv1,wv2) == 2)
+                    {
+                        auto result = clip_triangle_accurate(wv0,wv1,wv2);
+                        for(auto i = 0ul; i < result.size(); i = i + 3)
+                        {
+                            project_to_ndc(result[i]); project_to_ndc(result[i+1]); project_to_ndc(result[i+2]);
+                            to_screen_space(result[i]); to_screen_space(result[i+1]); to_screen_space(result[i+2]);
+                            if( is_cull_passing(result[i], result[i+1], result[i+2]) )
+                            {
+                                triangle
+                                (
+                                    static_cast<int32_t>(result[i].x), static_cast<int32_t>(result[i].y),
+                                    static_cast<int32_t>(result[i+1].x), static_cast<int32_t>(result[i+1].y),
+                                    static_cast<int32_t>(result[i+2].x), static_cast<int32_t>(result[i+2].y), workingColor);
+                            }
+
+
+                        }
+                    }
+                }
+                vp = vp + vertStride + vertStride + vertStride;
+                cp = cp + colStride + colStride; + colStride;
             }
+
+
             else if constexpr (DT == DrawType::TrianglesWireFrame)
             {
 
@@ -461,22 +542,22 @@ public:
 
             }
 
-            vp = vp + vertStride;
-            cp = cp + colStride;
+
 
         }
     }
 
 
-    auto drawArray(DrawType const DT, uint32_t const first, uint32_t const count) -> void
+    auto drawArray(DrawType const drawType, uint32_t const first, uint32_t const count) -> void
     {
         template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^DrawType)))
         {
-            //if(DT != [:e:]) { continue; }
-
-            if(vertex_size_ == 2) { drawArray_impl_<([:e:]), 2>(first, count); }
-            else                  { drawArray_impl_<([:e:]), 3>(first, count); }
-            return;
+            if (drawType == [:e:])
+            {
+                if (vertex_size_ == 2) {drawArray_impl_<([:e:]), 2>(first, count); }
+                else { drawArray_impl_<([:e:]), 3>(first, count); }
+                return;
+            }
         }
     }
 
@@ -484,20 +565,20 @@ protected:
 
 
     template<size_t VERTEX_SIZE>
-    auto read_vertex(std::byte const * src, ffm::fixed32* dst) -> void
+    auto read_vertex(std::byte const * src, ffm::vec3& dst) -> void
     {
         fixed32 const* vp = reinterpret_cast<ffm::fixed32 const*>(src);
         if constexpr (VERTEX_SIZE == 2)
         {
-            dst[0] = vp[0];
-            dst[1] = vp[1];
-            dst[2].data = 0;
+            dst.x = vp[0];
+            dst.y = vp[1];
+            dst.z.data = 0;
         }
         else if constexpr (VERTEX_SIZE == 3)
         {
-            dst[0] = vp[0];
-            dst[1] = vp[1];
-            dst[2] = vp[2];
+            dst.x = vp[0];
+            dst.y = vp[1];
+            dst.z = vp[2];
         }
     }
 
@@ -703,15 +784,15 @@ protected:
 
 
 
-    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> int32_t //0:reject,1:pass,2:partial
+    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> int32_t //0:reject,2:pass,1:partial
     {
         bool in0 = (v0.z >= near_z_);
         bool in1 = (v1.z >= near_z_);
         bool in2 = (v2.z >= near_z_);
 
-        if (in0 && in1 && in2) return 1;
+        if (in0 && in1 && in2) return 2;
         if (!in0 && !in1 && !in2) return 0;
-        return 2;
+        return 1;
     }
 
     [[nodiscard]] auto clip_triangle_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
@@ -763,9 +844,9 @@ protected:
         bool in2 = (v2.z >= near_z_);
         bool in3 = (v3.z >= near_z_);
 
-        if (in0 && in1 && in2 && in3) return 1;
+        if (in0 && in1 && in2 && in3) return 2;
         if (!in0 && !in1 && !in2 && !in3) return 0;
-        return 2;
+        return 1;
     }
 
     [[nodiscard]] auto clip_quad_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> std::inplace_vector<vec3, 9>
