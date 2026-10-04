@@ -60,7 +60,7 @@ public:
 
             ctx.setColorPointer(0, current_level_->getCellColorBufferPtr(hit.w, hit.l));
             ctx.setVertexPointer(3,sizeof(Vertex), &mesh[0].position);
-            ctx.drawArray(ffr::DrawType::Triangles, 0, mesh.size());
+            ctx.drawArray(ffr::DrawType::Quads, 0, mesh.size());
         }
 
         vfn.modelPos = current_player_->position;

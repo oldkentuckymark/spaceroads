@@ -372,7 +372,7 @@ public:
 
     auto setAspectRatio(fixed32 const ar) -> void
     {
-        aspect_ratio_ = ar;
+        aspect_ratio_ = 1.0_fx / ar;
     }
 
 
@@ -478,20 +478,20 @@ public:
                     {
                         triangle
                         (
-                            static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.x),
-                            static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.x),
-                            static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.x), workingColor
+                            static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                            static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y),
+                            static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor
                         );
                     }
 
                 }
                 else if(clip_ == PolygonClipMode::Trivial)
                 {
-                    if(clip_triangle_trivial(wv0,wv1,wv2) <= 2)
+                    if(clip_triangle_trivial(wv0,wv1,wv2) == 2)
                     {
                         project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2);
                         to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2);
-                        if(true || is_cull_passing(wv0,wv1,wv2))
+                        if(is_cull_passing(wv0,wv1,wv2))
                         {
                             triangle
                             (
@@ -525,21 +525,195 @@ public:
                     }
                 }
                 vp = vp + vertStride + vertStride + vertStride;
-                cp = cp + colStride + colStride; + colStride;
+                cp = cp + colStride + colStride + colStride;
             }
-
-
             else if constexpr (DT == DrawType::TrianglesWireFrame)
             {
+                read_vertex<VERTEX_SIZE>(vp,wv0);
+                read_vertex<VERTEX_SIZE>(vp + vertStride,wv1);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride,wv2);
 
+                vf_(wv0); vf_(wv1); vf_(wv2);
+                if(clip_ == PolygonClipMode::None)
+                {
+                    project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2);
+                    to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2);
+                    if(is_cull_passing(wv0,wv1,wv2))
+                    {
+                        line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                        line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                    }
+
+                }
+                else if(clip_ == PolygonClipMode::Trivial)
+                {
+                    if(clip_triangle_trivial(wv0,wv1,wv2) == 2)
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2);
+                        to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2);
+                        if(true || is_cull_passing(wv0,wv1,wv2))
+                        {
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                            line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                            line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                        }
+                    }
+                }
+                else if(clip_ == PolygonClipMode::Full)
+                {
+                    if(clip_triangle_trivial(wv0,wv1,wv2) == 2)
+                    {
+                        auto result = clip_triangle_accurate(wv0,wv1,wv2);
+                        for(auto i = 0ul; i < result.size(); i = i + VERTS_PER_TRIANGLE)
+                        {
+                            project_to_ndc(result[i]); project_to_ndc(result[i+1]); project_to_ndc(result[i+2]);
+                            to_screen_space(result[i]); to_screen_space(result[i+1]); to_screen_space(result[i+2]);
+                            if( is_cull_passing(result[i], result[i+1], result[i+2]) )
+                            {
+                                line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                                line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                                line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                            }
+
+
+                        }
+                    }
+                }
+                vp = vp + vertStride + vertStride + vertStride;
+                cp = cp + colStride + colStride + colStride;
             }
             else if constexpr (DT == DrawType::Quads)
             {
 
+                read_vertex<VERTEX_SIZE>(vp,wv0);
+                read_vertex<VERTEX_SIZE>(vp + vertStride,wv1);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride,wv2);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride + vertStride,wv3);
+
+                vf_(wv0); vf_(wv1); vf_(wv2); vf_(wv3);
+                if(clip_ == PolygonClipMode::None)
+                {
+                    project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2); project_to_ndc(wv3);
+                    to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2); to_screen_space(wv3);
+                    if(is_cull_passing(wv0,wv1,wv2))
+                    {
+                        quad
+                        (
+                            static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                            static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y),
+                            static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y),
+                            static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor
+                        );
+                    }
+
+                }
+                else if(clip_ == PolygonClipMode::Trivial)
+                {
+                    if(clip_quad_trivial(wv0,wv1,wv2,wv3) == 2)
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2); project_to_ndc(wv3);
+                        to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2); to_screen_space(wv3);
+                        if(is_cull_passing(wv0,wv1,wv2))
+                        {
+                            quad
+                            (
+                                static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y),
+                                static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y),
+                                static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor
+                            );
+
+                        }
+                    }
+                }
+                else if(clip_ == PolygonClipMode::Full)
+                {
+                    if(clip_quad_trivial(wv0,wv1,wv2,wv3) == 2)
+                    {
+                        auto result = clip_quad_accurate(wv0,wv1,wv2,wv3);
+                        for(auto i = 0ul; i < result.size(); i = i + VERTS_PER_QUAD)
+                        {
+                            project_to_ndc(result[i]); project_to_ndc(result[i+1]); project_to_ndc(result[i+2]); project_to_ndc(result[i+3]);
+                            to_screen_space(result[i]); to_screen_space(result[i+1]); to_screen_space(result[i+2]); to_screen_space(result[i+3]);
+                            if( is_cull_passing(result[i], result[i+1], result[i+2]) )
+                            {
+                                quad
+                                (
+                                    static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y),
+                                    static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y),
+                                    static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y),
+                                    static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor
+                                );
+                            }
+
+
+                        }
+                    }
+                }
+                vp = vp + vertStride + vertStride + vertStride + vertStride;
+                cp = cp + colStride + colStride + colStride + colStride;
+
             }
             else if constexpr (DT == DrawType::QuadsWireFrame)
             {
+                read_vertex<VERTEX_SIZE>(vp,wv0);
+                read_vertex<VERTEX_SIZE>(vp + vertStride,wv1);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride,wv2);
+                read_vertex<VERTEX_SIZE>(vp + vertStride + vertStride + vertStride,wv3);
 
+                vf_(wv0); vf_(wv1); vf_(wv2); vf_(wv3);
+                if(clip_ == PolygonClipMode::None)
+                {
+                    project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2); project_to_ndc(wv3);
+                    to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2); to_screen_space(wv3);
+                    if(is_cull_passing(wv0,wv1,wv2))
+                    {
+                        line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                        line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                        line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor);
+                        line(static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                    }
+
+                }
+                else if(clip_ == PolygonClipMode::Trivial)
+                {
+                    if(clip_quad_trivial(wv0,wv1,wv2,wv3) == 2)
+                    {
+                        project_to_ndc(wv0); project_to_ndc(wv1); project_to_ndc(wv2); project_to_ndc(wv3);
+                        to_screen_space(wv0); to_screen_space(wv1); to_screen_space(wv2); to_screen_space(wv3);
+                        if(is_cull_passing(wv0,wv1,wv2))
+                        {
+                            line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                            line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                            line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor);
+                            line(static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                        }
+                    }
+                }
+                else if(clip_ == PolygonClipMode::Full)
+                {
+                    if(clip_quad_trivial(wv0,wv1,wv2,wv3) == 2)
+                    {
+                        auto result = clip_quad_accurate(wv0,wv1,wv2,wv3);
+                        for(auto i = 0ul; i < result.size(); i = i + VERTS_PER_QUAD)
+                        {
+                            project_to_ndc(result[i]); project_to_ndc(result[i+1]); project_to_ndc(result[i+2]); project_to_ndc(result[i+3]);
+                            to_screen_space(result[i]); to_screen_space(result[i+1]); to_screen_space(result[i+2]); to_screen_space(result[i+3]);
+                            if( is_cull_passing(result[i], result[i+1], result[i+2]) )
+                            {
+                                line(static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), workingColor);
+                                line(static_cast<int32_t>(wv1.x), static_cast<int32_t>(wv1.y), static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), workingColor);
+                                line(static_cast<int32_t>(wv2.x), static_cast<int32_t>(wv2.y), static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), workingColor);
+                                line(static_cast<int32_t>(wv3.x), static_cast<int32_t>(wv3.y), static_cast<int32_t>(wv0.x), static_cast<int32_t>(wv0.y), workingColor);
+                            }
+
+
+                        }
+                    }
+                }
+                vp = vp + vertStride + vertStride + vertStride + vertStride;
+                cp = cp + colStride + colStride + colStride + colStride;
             }
 
 

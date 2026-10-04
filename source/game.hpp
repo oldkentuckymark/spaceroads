@@ -50,20 +50,24 @@ public:
 
         if(inputs[UP])
         {
-            player_.velocity.z = player_.velocity.z + player_.acceleration;
+            player_.velocity.z = 0.5_fx;// player_.velocity.z + player_.acceleration;
 
         }
         if(inputs[DOWN])
         {
-            player_.velocity.z = player_.velocity.z - player_.acceleration;
+            player_.velocity.z = -0.5_fx;//player_.velocity.z - player_.acceleration;
         }
         if(inputs[RIGHT])
         {
-            player_.velocity.x = player_.xSpeed;
+            player_.velocity.x = 0.5_fx;// player_.xSpeed;
         }
         if(inputs[LEFT])
         {
-            player_.velocity.x = -player_.xSpeed;
+            player_.velocity.x = -0.5_fx;//-player_.xSpeed;
+        }
+        if(!inputs[UP] && !inputs[DOWN])
+        {
+            player_.velocity.z = 0.0_fx;
         }
         if(!inputs[LEFT] && !inputs[RIGHT])
         {
@@ -92,7 +96,7 @@ public:
     auto update(ffm::fixed32 dt) -> void
     {
         player_.position = player_.position + (player_.velocity * dt);
-        camera_.position = player_.position + ffm::vec3{0.0_fx, 1.2_fx, -1.5_fx};
+        camera_.position = player_.position + ffm::vec3{0.0_fx, 1.5_fx, -2.7_fx};
     }
 
 private:

@@ -78,9 +78,10 @@ public:
         SDL_DestroyWindow(win);
     }
 
-    auto clear() -> void
+    auto clear(uint16_t color = 0) -> void
     {
-        SDL_SetRenderDrawColor(ren,0,0,0,255);
+        auto ca = util::Convert555to888(color);
+        SDL_SetRenderDrawColor(ren,ca[0],ca[1],ca[2],255);
         SDL_RenderClear(ren);
     }
 
@@ -93,20 +94,19 @@ public:
         SDL_SetRenderTarget(ren,tex);
     }
 
-    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
-    {
-        auto cc = util::Convert555to888(color);
-        SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
-        SDL_RenderLine(ren, x0,y0,x1,y0);
-    }
+    //auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
+    //{
+    //    auto cc = util::Convert555to888(color);
+    //    SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
+    //    SDL_RenderLine(ren, x0,y0,x1,y0);
+    //}
+
 
     auto plot(int32_t x, int32_t y, uint16_t color) -> void
     {
         auto cc = util::Convert555to888(color);
         SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
         SDL_RenderPoint(ren,x,y);
-
-
     }
 
 private:
