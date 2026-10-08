@@ -50,20 +50,20 @@ public:
 
         if(inputs[UP])
         {
-            player_.velocity.z = 0.5_fx;// player_.velocity.z + player_.acceleration;
+            player_.velocity.z = 0.2_fx;// player_.velocity.z + player_.acceleration;
 
         }
         if(inputs[DOWN])
         {
-            player_.velocity.z = -0.5_fx;//player_.velocity.z - player_.acceleration;
+            player_.velocity.z = -0.2_fx;//player_.velocity.z - player_.acceleration;
         }
         if(inputs[RIGHT])
         {
-            player_.velocity.x = 0.5_fx;// player_.xSpeed;
+            player_.velocity.x = 0.2_fx;// player_.xSpeed;
         }
         if(inputs[LEFT])
         {
-            player_.velocity.x = -0.5_fx;//-player_.xSpeed;
+            player_.velocity.x = -0.2_fx;//-player_.xSpeed;
         }
         if(!inputs[UP] && !inputs[DOWN])
         {
@@ -75,11 +75,11 @@ public:
         }
         if(inputs[L])
         {
-            camera_.yaw = camera_.yaw - 0.5_fx;
+            camera_.yaw = camera_.yaw - 0.2_fx;
         }
         if(inputs[R])
         {
-            camera_.yaw = camera_.yaw + 0.5_fx;
+            camera_.yaw = camera_.yaw + 0.2_fx;
         }
 
 
