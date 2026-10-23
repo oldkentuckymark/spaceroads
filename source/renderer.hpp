@@ -29,7 +29,6 @@ public:
         //if (!current_level_ || !current_player_) [[unlikely]] return;
 
         ctx.setFaceCulling(ffr::FaceCullMode::Back);
-        ctx.setPolygonClipping(ffr::PolygonClipMode::Trivial);
         ctx.clear();
 
         // 1. Update camera position and view angle
@@ -59,7 +58,7 @@ public:
             };
 
             ctx.setColorPointer(0, current_level_->getCellColorBufferPtr(hit.w, hit.l));
-            ctx.setVertexPointer(3,sizeof(Vertex), &mesh[0].position);
+            ctx.setVertexPointer(3, sizeof(Vertex), &mesh[0].position);
             ctx.drawArray(ffr::DrawType::Quads, 0, mesh.size());
         }
 

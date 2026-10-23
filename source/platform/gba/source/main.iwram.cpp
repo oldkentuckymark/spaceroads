@@ -90,8 +90,9 @@ public:
         REG_BG2PC = 0;       // Vertical shearing (none)
         REG_BG2PD = scale_y; // Vertical scaling step
 
-        setViewPort(0,0,RENDER_WIDTH, RENDER_HEIGHT);
+        setScreenSize(RENDER_WIDTH, RENDER_HEIGHT);
         setNearZ(1.0_fx);
+        setAspectRatio(1.5_fx);
     }
 
     inline void clear(uint16_t color = 0)
@@ -124,14 +125,14 @@ public:
     inline void lineHorizontal(int16_t x0, int16_t y0, int16_t x1, uint16_t color)
     {
         if(y0 < 0) { return; }
-        if(y0 >= viewport_height_) { return; }
+        if(y0 >= render_height_) { return; }
         if(x0 > x1) std::swap(x0, x1);
 
 
         if(x0 < 0) { x0 = 0; }
-        if(x0 >= viewport_width_) { x0 = viewport_width_ - 1; }
+        if(x0 >= render_width_) { x0 = render_width_ - 1; }
         if(x1 < 0) { x1 = 0; }
-        if(x1 >= viewport_width_) { x1 = viewport_width_ - 1; }
+        if(x1 >= render_width_) { x1 = render_width_ - 1; }
 
         uint16_t* p_16 = const_cast<uint16_t*>(&vram[y0 * RENDER_WIDTH + x0]);
         int32_t count = x1 - x0 + 1;

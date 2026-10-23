@@ -61,8 +61,7 @@ public:
     Context()
     {
         SDL_Init(SDL_INIT_VIDEO);
-        win = SDL_CreateWindow("spaceroads-sdl",SCREEN_WIDTH*scale,SCREEN_HEIGHT*scale,0);
-        ren = SDL_CreateRenderer(win,"software");
+        SDL_CreateWindowAndRenderer("spaceroads-sdl",SCREEN_WIDTH*scale,SCREEN_HEIGHT*scale,0,&win,&ren);
         tex = SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, RENDER_WIDTH,RENDER_HEIGHT);
         SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
         SDL_SetRenderTarget(ren,tex);
@@ -78,10 +77,9 @@ public:
         SDL_DestroyWindow(win);
     }
 
-    auto clear(uint16_t color = 0) -> void
+    auto clear() -> void
     {
-        auto ca = util::Convert555to888(color);
-        SDL_SetRenderDrawColor(ren,ca[0],ca[1],ca[2],255);
+        SDL_SetRenderDrawColor(ren,0,0,0,255);
         SDL_RenderClear(ren);
     }
 
@@ -94,13 +92,12 @@ public:
         SDL_SetRenderTarget(ren,tex);
     }
 
-    //auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
-    //{
-    //    auto cc = util::Convert555to888(color);
-    //    SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
-    //    SDL_RenderLine(ren, x0,y0,x1,y0);
-    //}
-
+    auto lineHorizontal(int32_t x0, int32_t y0, int32_t x1, uint16_t color) -> void
+    {
+        auto cc = util::Convert555to888(color);
+        SDL_SetRenderDrawColor(ren,cc[0],cc[1],cc[2],255);
+        SDL_RenderLine(ren, x0,y0,x1,y0);
+    }
 
     auto plot(int32_t x, int32_t y, uint16_t color) -> void
     {
