@@ -104,6 +104,22 @@ enum class FaceCullMode : int32_t
     All = 2
 };
 
+enum class ClipResult : uint32_t
+{
+    Accept,
+    Reject,
+    Partial
+};
+
+enum class PolygonClipMode : uint32_t
+{
+    None = 0,
+    Trivial,
+    Accurate
+};
+
+
+
 template<class Derived, class VERTEX_FUNCTION>
 class BaseContext
 {
@@ -621,12 +637,7 @@ protected:
     }
 
 
-    enum class ClipResult
-    {
-        Accept,
-        Reject,
-        Partial
-    };
+
 
     [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
     {
