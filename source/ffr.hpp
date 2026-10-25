@@ -363,7 +363,7 @@ public:
         aspect_ratio_ = 1.0_fx / ar;
     }
 
-     [[nodiscard]] auto getVertexFunction() -> VERTEX_FUNCTION&
+    [[nodiscard]] auto getVertexFunction() -> VERTEX_FUNCTION&
     {
         return vf_;
     }
@@ -371,6 +371,11 @@ public:
     auto setFaceCulling(FaceCullMode const mode) -> void
     {
         cull_ = mode;
+    }
+
+    auto setClipMode(PolygonClipMode const pcm) -> void
+    {
+        clip_ = pcm;
     }
 
     auto setNearZ(fixed32 const z) -> void
@@ -381,7 +386,7 @@ public:
 
 
 
-     auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
+    auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
     {
         current_draw_type_ = dt;
         working_vertex_buffer_.clear();
@@ -448,7 +453,10 @@ public:
             {
                 vec3& cvs = working_vertex_buffer_[i];
 
-
+                if(clip_point_near(cvs))
+                {
+                    project_to_ndc(cvs);
+                }
 
                 col = col + 1;
             }
@@ -556,31 +564,15 @@ public:
 
 protected:
 
-     auto is_point_inside_near(vec3 const & p) -> bool
+    [[nodiscard]] auto clip_line_near_trivial(vec3 const & v0, vec3 const & v1) -> ClipResult
     {
-        return p.z > near_z_;
     }
 
-
-     auto clip_line_near(vec3& v0, vec3& v1) -> bool
+    [[nodiscard]] auto clip_line_near_accurate(vec3 const & v0, vec3 const & v1) -> ClipResult
     {
-        //trivial pass
-        if(is_point_inside_near(v0) && is_point_inside_near(v1))
-        {
-            return true;
-        }
-
-        //trivial fail
-        else if((!is_point_inside_near(v0)) && (!is_point_inside_near(v1)))
-        {
-            return false;
-        }
-
-        //clamp if partial
-        return false;
     }
 
-     auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
+    [[nodiscard]] auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
         if (y0 >= render_height_) { return 0; }    // below screen: nothing further can be visible
@@ -592,9 +584,25 @@ protected:
         return 1;
     }
 
+    [[nodiscard]] auto clip_triangle_near_trivial(vec3 const & v0, vec3 const & v1, vec3 const & v2) -> ClipResult
+    {
+    }
 
+    [[nodiscard]] auto clip_triangle_near_accurate(vec3 const & v0, vec3 const & v1, vec3 const & v2) -> ClipResult
+    {
+    }
 
-     auto project_to_ndc(vec3& p) -> void
+    [[nodiscard]] auto clip_quad_near_trivial(vec3 const & v0, vec3 const & v1, vec3 const & v2, vec3 const & v3) -> ClipResult
+    {
+
+    }
+
+    [[nodiscard]] auto clip_quad_near_accurate(vec3 const & v0, vec3 const & v1, vec3 const & v2, vec3 const & v3) -> ClipResult
+    {
+
+    }
+
+    auto project_to_ndc(vec3& p) -> void
     {
         p.x = p.x * aspect_ratio_;
         p.x = p.x * invZ(p.z);
@@ -636,7 +644,16 @@ protected:
         p.y = sy * render_height_fx_;
     }
 
+    [[nodiscard]] auto clip_point_near(vec3 const & p) -> bool
+    {
+        return p.z >= near_z_;
+    }
 
+    [[nodiscard]] auto clip_point_ndc(vec3 const & p) -> bool
+    {
+        return p.x >= 0.0_fx && p.x < 1.0_fx &&
+               p.y >= 0.0_fx && p.y < 1.0_fx;
+    }
 
 
     [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
@@ -767,6 +784,7 @@ protected:
     std::inplace_vector<vec3, 16> post_clip_verts2_;
 
     FaceCullMode cull_{FaceCullMode::All};
+    PolygonClipMode clip_{PolygonClipMode::None};
 
 
 };
