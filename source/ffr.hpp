@@ -456,6 +456,11 @@ public:
                 if(clip_point_near(cvs))
                 {
                     project_to_ndc(cvs);
+                    if(clip_point_ndc(cvs))
+                    {
+                        to_screen_space(cvs);
+                        plot(static_cast<int32_t>(cvs.x), static_cast<int32_t>(cvs.y), ccs);
+                    }
                 }
 
                 col = col + 1;
@@ -651,8 +656,8 @@ protected:
 
     [[nodiscard]] auto clip_point_ndc(vec3 const & p) -> bool
     {
-        return p.x >= 0.0_fx && p.x < 1.0_fx &&
-               p.y >= 0.0_fx && p.y < 1.0_fx;
+        return p.x > -1.0_fx && p.x < 1.0_fx &&
+               p.y > -1.0_fx && p.y < 1.0_fx;
     }
 
 
