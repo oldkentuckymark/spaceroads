@@ -416,6 +416,12 @@ public:
         auto vs = vertex_stride_;
         auto cs = color_stride_;
 
+        uint16_t wc;
+        vec3 wv0;
+        vec3 wv1;
+        vec3 wv2;
+        vec3 wv4;
+
 
         if constexpr(VERTEX_SIZE == 2)
         {
@@ -524,6 +530,37 @@ protected:
                p.y > -1.0_fx && p.y < 1.0_fx;
     }
 
+    [[nodiscard]] constexpr bool clip_line_near_accurate(vec3& a, vec3& b)
+    {
+
+        const bool a_behind = a.z < near_z_;
+        const bool b_behind = b.z < near_z_;
+
+        if (!a_behind && !b_behind) {
+            return true;
+        }
+
+        if (a_behind && b_behind) {
+            return false;
+        }
+
+        const fixed32 t = (near_z_ - a.z) / (b.z - a.z);
+        const vec3 hit
+        {
+            ffm::mix(a.x, b.x, t),
+            ffm::mix(a.y, b.y, t),
+            near_z_
+        };
+
+        if (a_behind) {
+            a = hit;
+        } else {
+            b = hit;
+        }
+
+        return false;
+    }
+
     [[nodiscard]] auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
     {
         if (y0 < 0)                { return -1; }   // above screen: skip this row only
@@ -549,35 +586,27 @@ protected:
 
     [[nodiscard]] auto clip_triangle_near_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
     {
-        // Max 5 vertices after clipping a triangle against 1 plane.
         std::inplace_vector<vec3, 5> clipped;
 
-        // Local lambda allows the compiler to fully unroll and inline
-        // the edge processing without loop overhead.
         auto process_edge = [&](vec3 const& curr, vec3 const& next) {
             bool currIn = (curr.z >= near_z_);
             bool nextIn = (next.z >= near_z_);
 
-            if (currIn) {
+            if (currIn)
+            {
                 clipped.emplace_back(curr);
             }
-            if (currIn != nextIn) {
+            if (currIn != nextIn)
+            {
                 fixed32 t = (near_z_ - curr.z) / (next.z - curr.z);
-                clipped.emplace_back(
-                    curr.x + (next.x - curr.x) * t,
-                    curr.y + (next.y - curr.y) * t,
-                    near_z_ // GBA OPTIMIZATION: Z is exactly the near plane. Saves MUL + ADD.
-                    );
+                clipped.emplace_back(curr.x + (next.x - curr.x) * t,curr.y + (next.y - curr.y) * t,near_z_);
             }
         };
 
-        // Explicitly unrolled edges for maximum ARM7TDMI speed
         process_edge(v0, v1);
         process_edge(v1, v2);
         process_edge(v2, v0);
 
-        // Fan triangulation: Safely converts 3, 4, or 5 vertex convex polygons into triangles.
-        // Max output: 5 vertices = 3 triangles = 9 vertices.
         std::inplace_vector<vec3, 9> output;
         size_t m = clipped.size();
         for (size_t i = 1; i + 1 < m; ++i) {
@@ -606,24 +635,22 @@ protected:
         // Max 5 vertices after clipping a quad against 1 plane.
         std::inplace_vector<vec3, 5> clipped;
 
-        auto process_edge = [&](vec3 const& curr, vec3 const& next) {
+        auto process_edge = [&](vec3 const& curr, vec3 const& next)
+        {
             bool currIn = (curr.z >= near_z_);
             bool nextIn = (next.z >= near_z_);
 
-            if (currIn) {
+            if (currIn)
+            {
                 clipped.emplace_back(curr);
             }
-            if (currIn != nextIn) {
+            if (currIn != nextIn)
+            {
                 fixed32 t = (near_z_ - curr.z) / (next.z - curr.z);
-                clipped.emplace_back(
-                    curr.x + (next.x - curr.x) * t,
-                    curr.y + (next.y - curr.y) * t,
-                    near_z_ // GBA OPTIMIZATION: Z is exactly the near plane.
-                    );
+                clipped.emplace_back(curr.x + (next.x - curr.x) * t,curr.y + (next.y - curr.y) * t,near_z_);
             }
         };
 
-        // Explicitly unrolled edges
         process_edge(v0, v1);
         process_edge(v1, v2);
         process_edge(v2, v3);
@@ -632,7 +659,8 @@ protected:
         // Fan triangulation: Converts the clipped quad (now 3, 4, or 5 vertices) into triangles.
         std::inplace_vector<vec3, 9> output;
         size_t m = clipped.size();
-        for (size_t i = 1; i + 1 < m; ++i) {
+        for (size_t i = 1; i + 1 < m; ++i)
+        {
             output.emplace_back(clipped[0]);
             output.emplace_back(clipped[i]);
             output.emplace_back(clipped[i + 1]);
@@ -643,7 +671,7 @@ protected:
 
 
 
-    auto project_to_ndc(vec3& p) -> void
+    inline auto project_to_ndc(vec3& p) -> void
     {
         p.x = p.x * aspect_ratio_;
         p.x = p.x * invDiv(p.z);
@@ -658,23 +686,25 @@ protected:
         // Edge vectors sharing vertex v0
         const auto ab_x = v1.x - v0.x;
         const auto ab_y = v1.y - v0.y;
-        const auto ac_x = v2.x - v0.x; // Fixed: using v2 - v0 (AC) instead of v2 - v1 (BC)
+        const auto ac_x = v2.x - v0.x;
         const auto ac_y = v2.y - v0.y;
 
         // 2D cross product determinant (Z-component of AB x AC)
         const auto nz = ab_x * ac_y - ab_y * ac_x;
 
-        if (cull_ == FaceCullMode::Back) [[likely]] {
-            return nz < 0.0_fx; // Adjust to < 0.0_fx if your geometry uses Clockwise (CW) front faces
+        if (cull_ == FaceCullMode::Back) [[likely]]
+        {
+            return nz < 0.0_fx;
         }
-        else if (cull_ == FaceCullMode::Front) {
+        else if (cull_ == FaceCullMode::Front)
+        {
             return nz > 0.0_fx;
         }
 
         return false;
     }
 
-    auto to_screen_space(vec3& p) -> void
+    inline auto to_screen_space(vec3& p) -> void
     {
         // Map from [-1, +1] → [0, 1]
         fixed32 sx = (p.x + 1.0_fx).halved();

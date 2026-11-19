@@ -121,6 +121,17 @@ public:
         return r;
     }
 
+    [[nodiscard]] constexpr static auto fromRaw(int16_t const whole, uint16_t const fractional) -> fixed32
+    {
+        fixed32 r;
+        r.data = static_cast<int32_t>(
+            (static_cast<uint32_t>(static_cast<uint16_t>(whole)) << FIX_SHIFT) |
+            static_cast<uint32_t>(fractional)
+            );
+        return r;
+    }
+
+
     constexpr auto operator=(int8_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
     constexpr auto operator=(uint8_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
     constexpr auto operator=(int16_t const that) -> fixed32& { data = static_cast<int32_t>(that) << FIX_SHIFT; return *this; }
