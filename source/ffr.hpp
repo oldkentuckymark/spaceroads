@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <inplace_vector>
 #include <span>
+#include <meta>
 
 #include "color.hpp"
 #include "util.hpp"
@@ -96,12 +97,12 @@ enum class DrawType : uint32_t
     QuadsWireFra
 };
 
-enum class FaceCullMode : int32_t
+enum class FaceCullMode : uint32_t
 {
-    Back = -1,
-    None = 0,
-    Front = 1,
-    All = 2
+    Back,
+    None,
+    Front,
+    All
 };
 
 enum class ClipResult : uint32_t
@@ -113,7 +114,7 @@ enum class ClipResult : uint32_t
 
 enum class PolygonClipMode : uint32_t
 {
-    None = 0,
+    None,
     Trivial,
     Accurate
 };
@@ -384,7 +385,62 @@ public:
     }
 
 
+    template<uint32_t VERTEX_SIZE>
+    auto readVertex(std::byte const * const p) -> vec3
+    {
+        vec3 r;
+        fixed32 const * f32p = reinterpret_cast<fixed32 const * const>(p);
+        if constexpr(VERTEX_SIZE == 2)
+        {
+            r.x = f32p[0];
+            r.y = f32p[1];
+            r.z = 0.0_fx;
+        }
+        else if constexpr (VERTEX_SIZE == 3)
+        {
+            r.x = f32p[0];
+            r.y = f32p[1];
+            r.z = f32p[2];
+        }
+        return r;
+    }
 
+    template<DrawType DT, uint32_t VERTEX_SIZE>
+    auto drawArray_impl_(uint32_t first, uint32_t count) -> void
+    {
+        working_vertex_buffer_.clear();
+        working_color_buffer_.clear();
+
+        std::byte const * vp = reinterpret_cast<std::byte const *>(vertex_pointer_);
+        std::byte const * cp = reinterpret_cast<std::byte const *>(color_pointer_);
+        auto vs = vertex_stride_;
+        auto cs = color_stride_;
+
+
+        if constexpr(VERTEX_SIZE == 2)
+        {
+
+        }
+        else if constexpr (VERTEX_SIZE == 3)
+        {
+
+        }
+
+    }
+
+
+    auto drawArray2(DrawType const drawType, uint32_t const first, uint32_t const count) -> void
+    {
+        template for (constexpr auto e : std::define_static_array(std::meta::enumerators_of(^^DrawType)))
+        {
+            if (drawType == [:e:])
+            {
+                if (vertex_size_ == 2) {drawArray_impl_<([:e:]), 2>(first, count); }
+                else { drawArray_impl_<([:e:]), 3>(first, count); }
+                return;
+            }
+        }
+    }
 
     auto drawArray(DrawType const dt, uint32_t const first, uint32_t const count) -> void
     {
@@ -444,123 +500,9 @@ public:
         }
 
 
-        size_t col = 0;
-        for(uint32_t i = 0; i < working_vertex_buffer_.size(); ++i)
-        {
-            uint16_t const & ccs{working_color_buffer_[col]};
-
-            if(current_draw_type_ == DrawType::Points)
-            {
-                vec3& cvs = working_vertex_buffer_[i];
-
-                if(clip_point_near(cvs))
-                {
-                    project_to_ndc(cvs);
-                    if(clip_point_ndc(cvs))
-                    {
-                        to_screen_space(cvs);
-                        plot(static_cast<int32_t>(cvs.x), static_cast<int32_t>(cvs.y), ccs);
-                    }
-                }
-
-                col = col + 1;
-            }
-            else if(current_draw_type_ == DrawType::Lines)
-            {
-                vec3& p0{working_vertex_buffer_[i]};
-                vec3& p1{working_vertex_buffer_[i+1]};
 
 
 
-                i = i + 1;;
-                col = col + 2;
-            }
-            if (current_draw_type_ == DrawType::Triangles)
-            {
-                vec3& v0 = working_vertex_buffer_[i];
-                vec3& v1 = working_vertex_buffer_[i+1];
-                vec3& v2 = working_vertex_buffer_[i+2];
-
-                if (auto res = clip_triangle_trivial(v0, v1, v2); res == ClipResult::Accept)
-                {
-                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2);
-                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2);
-                    if (is_cull_passing(v0, v1, v2))
-                    {
-                        triangle(fixed32::round(v0.x), fixed32::round(v0.y),
-                                 fixed32::round(v1.x), fixed32::round(v1.y),
-                                 fixed32::round(v2.x), fixed32::round(v2.y), ccs);
-                    }
-                }
-                else if (false && res == ClipResult::Partial)
-                {
-                    auto outVerts = clip_triangle_accurate(v0, v1, v2);
-                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
-                    {
-                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
-                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
-                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
-                        {
-                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
-                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
-                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
-                        }
-                    }
-                }
-                i = i + 2;
-                col = col + 3;
-            }
-            else if(current_draw_type_ == DrawType::TrianglesWireFrame)
-            {
-                vec3& v0{working_vertex_buffer_[i]};
-                vec3& v1{working_vertex_buffer_[i+1]};
-                vec3& v2{working_vertex_buffer_[i+2]};
-
-
-
-                i = i + 2;
-                col = col + 3;
-            }
-            else if (current_draw_type_ == DrawType::Quads)
-            {
-                vec3& v0 = working_vertex_buffer_[i];
-                vec3& v1 = working_vertex_buffer_[i+1];
-                vec3& v2 = working_vertex_buffer_[i+2];
-                vec3& v3 = working_vertex_buffer_[i+3];
-
-                if (auto res = clip_quad_trivial(v0, v1, v2, v3); res == ClipResult::Accept)
-                {
-                    project_to_ndc(v0); project_to_ndc(v1); project_to_ndc(v2); project_to_ndc(v3);
-                    to_screen_space(v0); to_screen_space(v1); to_screen_space(v2); to_screen_space(v3);
-
-                    if(is_cull_passing(v0,v1,v2))
-                    {
-                        quad(fixed32::round(v0.x), fixed32::round(v0.y),
-                            fixed32::round(v1.x), fixed32::round(v1.y),
-                            fixed32::round(v2.x), fixed32::round(v2.y),
-                            fixed32::round(v3.x), fixed32::round(v3.y), ccs);
-                    }
-                }
-                else if (false && res == ClipResult::Partial)
-                {
-                    // NOTE: Accurate quad clipping returns TRIANGLES. We iterate by 3, not 4!
-                    auto outVerts = clip_quad_accurate(v0, v1, v2, v3);
-                    for (size_t k = 0; k + 2 < outVerts.size(); k += 3)
-                    {
-                        project_to_ndc(outVerts[k]); project_to_ndc(outVerts[k+1]); project_to_ndc(outVerts[k+2]);
-                        to_screen_space(outVerts[k]); to_screen_space(outVerts[k+1]); to_screen_space(outVerts[k+2]);
-                        if (is_cull_passing(outVerts[k], outVerts[k+1], outVerts[k+2]))
-                        {
-                            triangle(fixed32::round(outVerts[k].x), fixed32::round(outVerts[k].y),
-                                     fixed32::round(outVerts[k+1].x), fixed32::round(outVerts[k+1].y),
-                                     fixed32::round(outVerts[k+2].x), fixed32::round(outVerts[k+2].y), ccs);
-                        }
-                    }
-                }
-                i += 3;
-                col += 4;
-            }
-        }
 
     }
 
@@ -569,12 +511,17 @@ public:
 
 protected:
 
-    [[nodiscard]] auto clip_line_near_trivial(vec3 const & v0, vec3 const & v1) -> ClipResult
+
+
+    [[nodiscard]] auto clip_point_near(vec3 const & p) -> bool
     {
+        return p.z >= near_z_;
     }
 
-    [[nodiscard]] auto clip_line_near_accurate(vec3 const & v0, vec3 const & v1) -> ClipResult
+    [[nodiscard]] auto clip_point_ndc(vec3 const & p) -> bool
     {
+        return p.x > -1.0_fx && p.x < 1.0_fx &&
+               p.y > -1.0_fx && p.y < 1.0_fx;
     }
 
     [[nodiscard]] auto clip_horizontal_line_screen(int32_t& x0, int32_t& y0, int32_t& x1) -> int32_t
@@ -589,79 +536,7 @@ protected:
         return 1;
     }
 
-    [[nodiscard]] auto clip_triangle_near_trivial(vec3 const & v0, vec3 const & v1, vec3 const & v2) -> ClipResult
-    {
-    }
-
-    [[nodiscard]] auto clip_triangle_near_accurate(vec3 const & v0, vec3 const & v1, vec3 const & v2) -> ClipResult
-    {
-    }
-
-    [[nodiscard]] auto clip_quad_near_trivial(vec3 const & v0, vec3 const & v1, vec3 const & v2, vec3 const & v3) -> ClipResult
-    {
-
-    }
-
-    [[nodiscard]] auto clip_quad_near_accurate(vec3 const & v0, vec3 const & v1, vec3 const & v2, vec3 const & v3) -> ClipResult
-    {
-
-    }
-
-    auto project_to_ndc(vec3& p) -> void
-    {
-        p.x = p.x * aspect_ratio_;
-        p.x = p.x * invZ(p.z);
-        p.y = p.y * invZ(p.z);
-    }
-
-    [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
-    {
-        if (cull_ == FaceCullMode::None) { return true; }
-        if (cull_ == FaceCullMode::All) { return false; }
-
-        // Edge vectors sharing vertex v0
-        const auto ab_x = v1.x - v0.x;
-        const auto ab_y = v1.y - v0.y;
-        const auto ac_x = v2.x - v0.x; // Fixed: using v2 - v0 (AC) instead of v2 - v1 (BC)
-        const auto ac_y = v2.y - v0.y;
-
-        // 2D cross product determinant (Z-component of AB x AC)
-        const auto nz = ab_x * ac_y - ab_y * ac_x;
-
-        if (cull_ == FaceCullMode::Back) [[likely]] {
-            return nz < 0.0_fx; // Adjust to < 0.0_fx if your geometry uses Clockwise (CW) front faces
-        }
-        else if (cull_ == FaceCullMode::Front) {
-            return nz > 0.0_fx;
-        }
-
-        return false;
-    }
-
-    auto to_screen_space(vec3& p) -> void
-    {
-        // Map from [-1, +1] → [0, 1]
-        fixed32 sx = (p.x + 1.0_fx).halved();
-        fixed32 sy = (1.0_fx - p.y).halved();
-
-        // Scale to viewport
-        p.x = sx * render_width_fx_;
-        p.y = sy * render_height_fx_;
-    }
-
-    [[nodiscard]] auto clip_point_near(vec3 const & p) -> bool
-    {
-        return p.z >= near_z_;
-    }
-
-    [[nodiscard]] auto clip_point_ndc(vec3 const & p) -> bool
-    {
-        return p.x > -1.0_fx && p.x < 1.0_fx &&
-               p.y > -1.0_fx && p.y < 1.0_fx;
-    }
-
-
-    [[nodiscard]] auto clip_triangle_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
+    [[nodiscard]] auto clip_triangle_near_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> ClipResult
     {
         bool in0 = (v0.z >= near_z_);
         bool in1 = (v1.z >= near_z_);
@@ -672,7 +547,7 @@ protected:
         return ClipResult::Partial;
     }
 
-    [[nodiscard]] auto clip_triangle_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
+    [[nodiscard]] auto clip_triangle_near_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> std::inplace_vector<vec3, 9>
     {
         // Max 5 vertices after clipping a triangle against 1 plane.
         std::inplace_vector<vec3, 5> clipped;
@@ -714,7 +589,7 @@ protected:
         return output;
     }
 
-    [[nodiscard]] auto clip_quad_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> ClipResult
+    [[nodiscard]] auto clip_quad_near_trivial(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> ClipResult
     {
         bool in0 = (v0.z >= near_z_);
         bool in1 = (v1.z >= near_z_);
@@ -726,7 +601,7 @@ protected:
         return ClipResult::Partial;
     }
 
-    [[nodiscard]] auto clip_quad_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> std::inplace_vector<vec3, 9>
+    [[nodiscard]] auto clip_quad_near_accurate(vec3 const& v0, vec3 const& v1, vec3 const& v2, vec3 const& v3) -> std::inplace_vector<vec3, 9>
     {
         // Max 5 vertices after clipping a quad against 1 plane.
         std::inplace_vector<vec3, 5> clipped;
@@ -765,6 +640,55 @@ protected:
 
         return output;
     }
+
+
+
+    auto project_to_ndc(vec3& p) -> void
+    {
+        p.x = p.x * aspect_ratio_;
+        p.x = p.x * invDiv(p.z);
+        p.y = p.y * invDiv(p.z);
+    }
+
+    [[nodiscard]] auto is_cull_passing(vec3 const& v0, vec3 const& v1, vec3 const& v2) -> bool
+    {
+        if (cull_ == FaceCullMode::None) { return true; }
+        if (cull_ == FaceCullMode::All) { return false; }
+
+        // Edge vectors sharing vertex v0
+        const auto ab_x = v1.x - v0.x;
+        const auto ab_y = v1.y - v0.y;
+        const auto ac_x = v2.x - v0.x; // Fixed: using v2 - v0 (AC) instead of v2 - v1 (BC)
+        const auto ac_y = v2.y - v0.y;
+
+        // 2D cross product determinant (Z-component of AB x AC)
+        const auto nz = ab_x * ac_y - ab_y * ac_x;
+
+        if (cull_ == FaceCullMode::Back) [[likely]] {
+            return nz < 0.0_fx; // Adjust to < 0.0_fx if your geometry uses Clockwise (CW) front faces
+        }
+        else if (cull_ == FaceCullMode::Front) {
+            return nz > 0.0_fx;
+        }
+
+        return false;
+    }
+
+    auto to_screen_space(vec3& p) -> void
+    {
+        // Map from [-1, +1] → [0, 1]
+        fixed32 sx = (p.x + 1.0_fx).halved();
+        fixed32 sy = (1.0_fx - p.y).halved();
+
+        // Scale to viewport
+        p.x = sx * render_width_fx_;
+        p.y = sy * render_height_fx_;
+    }
+
+
+
+
+
 
 
     [[no_unique_address]] VERTEX_FUNCTION vf_;

@@ -50,12 +50,12 @@ public:
 
         if(inputs[UP])
         {
-            player_.velocity.z = player_.velocity.z + player_.acceleration;
+            player_.velocity.z = player_.acceleration;
 
         }
         if(inputs[DOWN])
         {
-            player_.velocity.z = player_.velocity.z - player_.acceleration;
+            player_.velocity.z =  -player_.acceleration;
         }
         if(inputs[RIGHT])
         {
@@ -93,6 +93,7 @@ public:
     {
         player_.position = player_.position + (player_.velocity * dt);
         camera_.position = player_.position + ffm::vec3{0.0_fx, 1.0_fx, -1.5_fx};
+        player_.velocity.z = 0.0_fx;
     }
 
 private:

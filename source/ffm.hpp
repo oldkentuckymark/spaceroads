@@ -305,9 +305,9 @@ consteval auto makeInvsqrtTable() -> LUT
 }
 
 
-static constexpr size_t INVZ_N = 1024;
-static constexpr uint32_t INVZ_BOUNDARY  = 2;     // near/far split (power of 2)
-static constexpr uint32_t INVZ_FAR_SHIFT = 4;     // far range = boundary * 2^this
+static constexpr size_t INVDIV_N = 1024;
+static constexpr uint32_t INVDIV_BOUNDARY  = 2;     // near/far split (power of 2)
+static constexpr uint32_t INVDIV_FAR_SHIFT = 4;     // far range = boundary * 2^this
 
 consteval uint32_t log2(uint32_t x)
 {
@@ -316,17 +316,17 @@ consteval uint32_t log2(uint32_t x)
 
 
 
-consteval auto makeInvZTable() -> std::array<fixed32, INVZ_N>
+consteval auto makeInvDivTable() -> std::array<fixed32, INVDIV_N>
 {
-    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
-    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
+    constexpr uint32_t R0_ENTRIES   = INVDIV_N >> 1;
+    constexpr uint32_t R1_ENTRIES   = INVDIV_N >> 1;
+    constexpr uint32_t R0_MAX_RAW   = INVDIV_BOUNDARY << 16;
+    constexpr uint32_t R1_RANGE     = INVDIV_BOUNDARY << INVDIV_FAR_SHIFT;
     constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
     constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
     constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
 
-    std::array<fixed32, INVZ_N> table{};
+    std::array<fixed32, INVDIV_N> table{};
 
     for (uint32_t i = 0; i < R0_ENTRIES; ++i)
     {
@@ -349,19 +349,19 @@ static constexpr LUT SINTABLE{makeSinTable()};
 
 } // namespace
 
-[[nodiscard]] constexpr static auto invZ(fixed32 const z) -> fixed32
+[[nodiscard]] constexpr static auto invDiv(fixed32 const z) -> fixed32
 {
 
-    constexpr uint32_t R0_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R1_ENTRIES   = INVZ_N >> 1;
-    constexpr uint32_t R0_MAX_RAW   = INVZ_BOUNDARY << 16;
-    constexpr uint32_t R1_RANGE     = INVZ_BOUNDARY << INVZ_FAR_SHIFT;
+    constexpr uint32_t R0_ENTRIES   = INVDIV_N >> 1;
+    constexpr uint32_t R1_ENTRIES   = INVDIV_N >> 1;
+    constexpr uint32_t R0_MAX_RAW   = INVDIV_BOUNDARY << 16;
+    constexpr uint32_t R1_RANGE     = INVDIV_BOUNDARY << INVDIV_FAR_SHIFT;
     constexpr uint32_t Z_MAX_RAW    = R0_MAX_RAW + (R1_RANGE << 16);
     constexpr uint32_t R0_SHIFT     = log2(R0_MAX_RAW) - log2(R0_ENTRIES);
     constexpr uint32_t R1_SHIFT     = log2(R1_RANGE << 16) - log2(R1_ENTRIES);
     constexpr uint32_t R1_OFFSET    = R0_ENTRIES;
 
-    static constexpr auto table = makeInvZTable();
+    static constexpr auto table = makeInvDivTable();
 
     uint32_t const raw = static_cast<uint32_t>(z.data < 0 ? -z.data : z.data);
     uint32_t const clamped = (raw < Z_MAX_RAW) ? raw : (Z_MAX_RAW - 1);
