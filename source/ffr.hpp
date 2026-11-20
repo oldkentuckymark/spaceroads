@@ -408,13 +408,25 @@ public:
     template<DrawType DT, uint32_t VERTEX_SIZE>
     auto drawArray_impl_(uint32_t first, uint32_t count) -> void
     {
-        working_vertex_buffer_.clear();
-        working_color_buffer_.clear();
+
 
         std::byte const * vp = reinterpret_cast<std::byte const *>(vertex_pointer_);
         std::byte const * cp = reinterpret_cast<std::byte const *>(color_pointer_);
         auto vs = vertex_stride_;
         auto cs = color_stride_;
+
+        if(vertex_stride_ == 0)
+        {
+            if constexpr (VERTEX_SIZE == 2)
+            {
+                vs = sizeof(vec2);
+            }
+            else if constexpr (VERTEX_SIZE == 3)
+            {
+
+            }
+        }
+
 
         uint16_t wc;
         vec3 wv0;
